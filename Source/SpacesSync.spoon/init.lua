@@ -494,6 +494,53 @@ function obj:start()
 
   obj.logger.i("Starting (SpacesSync " .. obj.version .. ")")
 
+  -- Validate configuration
+  if type(obj.syncGroups) ~= "table" then
+    obj.logger.e("syncGroups must be a table, got " .. type(obj.syncGroups))
+    return self
+  end
+  for gi, group in ipairs(obj.syncGroups) do
+    if type(group) ~= "table" then
+      obj.logger.e("syncGroups[" .. gi .. "] must be a table, got " .. type(group))
+      return self
+    end
+    if #group < 2 then
+      obj.logger.w("syncGroups[" .. gi .. "] has " .. #group .. " member(s) — need at least 2 to sync")
+    end
+    -- Check for overlapping groups
+    for _, pos in ipairs(group) do
+      if type(pos) ~= "number" or pos < 1 or pos ~= math.floor(pos) then
+        obj.logger.e("syncGroups[" .. gi .. "] contains invalid position: " .. tostring(pos) .. " (must be a positive integer)")
+        return self
+      end
+    end
+  end
+  -- Detect overlapping groups (same position in multiple groups)
+  local positionSeen = {}
+  for gi, group in ipairs(obj.syncGroups) do
+    for _, pos in ipairs(group) do
+      if positionSeen[pos] then
+        obj.logger.w("Position " .. pos .. " appears in group " .. positionSeen[pos] .. " and group " .. gi .. " — only the first group will be used for triggers from this monitor")
+      else
+        positionSeen[pos] = gi
+      end
+    end
+  end
+  if type(obj.switchDelay) ~= "number" or obj.switchDelay < 0 then
+    obj.logger.e("switchDelay must be a non-negative number, got " .. tostring(obj.switchDelay))
+    return self
+  end
+  if obj.switchDelay < 0.1 then
+    obj.logger.w("switchDelay=" .. obj.switchDelay .. "s — macOS may drop rapid gotoSpace() calls (0.3s recommended)")
+  end
+  if type(obj.debounceSeconds) ~= "number" or obj.debounceSeconds < 0 then
+    obj.logger.e("debounceSeconds must be a non-negative number, got " .. tostring(obj.debounceSeconds))
+    return self
+  end
+  if obj.debounceSeconds < 0.3 then
+    obj.logger.w("debounceSeconds=" .. obj.debounceSeconds .. "s — watcher may react to its own switches (0.8s recommended)")
+  end
+
   checkEnvironment()
 
   if state.osBlocked then
