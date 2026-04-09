@@ -54,10 +54,33 @@ Run through this before publishing a new version of SpacesSync.
 ## Publishing
 
 - [ ] Commit all changes to this repo
+- [ ] Rebuild distribution artifacts (see procedure below)
 - [ ] Push to GitHub (`origin`) and Forgejo (`umbridge`)
 - [ ] Create a GitHub release with `SpacesSync.spoon.zip` (see procedure below)
 - [ ] Update the Hammerspoon/Spoons PR (see procedure below)
 - [ ] Update README note if PR status changes (merged, closed, etc.)
+
+## Rebuilding distribution artifacts
+
+`docs/docs.json` and `Spoons/SpacesSync.spoon.zip` are distribution copies
+of the source in `Source/SpacesSync.spoon/`. Rebuild them after any code change:
+
+```bash
+# Rebuild docs/docs.json (copy from source)
+cp Source/SpacesSync.spoon/docs.json docs/docs.json
+
+# Rebuild Spoons/SpacesSync.spoon.zip
+cd /tmp
+rm -rf SpacesSync.spoon SpacesSync.spoon.zip
+mkdir SpacesSync.spoon
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/init.lua SpacesSync.spoon/
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/docs.json SpacesSync.spoon/
+zip -r SpacesSync.spoon.zip SpacesSync.spoon/
+cp SpacesSync.spoon.zip ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Spoons/
+rm -rf SpacesSync.spoon SpacesSync.spoon.zip
+```
+
+Commit both artifacts before pushing.
 
 ## Creating a GitHub release
 
