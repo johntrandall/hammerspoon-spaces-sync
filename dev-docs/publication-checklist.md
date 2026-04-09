@@ -55,6 +55,32 @@ Run through this before publishing a new version of SpacesSync.
 
 - [ ] Commit all changes to this repo
 - [ ] Push to GitHub (`origin`) and Forgejo (`umbridge`)
-- [ ] Copy updated `Source/SpacesSync.spoon/` into Hammerspoon/Spoons fork
-- [ ] Open or update PR to `Hammerspoon/Spoons`
+- [ ] Update the Hammerspoon/Spoons PR (see procedure below)
 - [ ] Update README note if PR status changes (merged, closed, etc.)
+
+## Updating the Hammerspoon/Spoons PR
+
+The Spoon lives in two places: this repo (source of truth) and the
+`johntrandall/Spoons` fork (delivery vehicle for the upstream PR).
+After pushing changes here, sync them to the fork:
+
+```bash
+# Clone fork to /tmp (ephemeral — don't keep a permanent copy)
+cd /tmp && gh repo clone johntrandall/Spoons
+cd /tmp/Spoons && git checkout add-spaces-sync-spoon
+
+# Copy updated Spoon from this repo
+cp Source/SpacesSync.spoon/init.lua /tmp/Spoons/Source/SpacesSync.spoon/
+cp Source/SpacesSync.spoon/docs.json /tmp/Spoons/Source/SpacesSync.spoon/
+
+# Commit and push
+cd /tmp/Spoons
+git add Source/SpacesSync.spoon/
+git commit -m "Update SpacesSync Spoon — <summary of changes>"
+git push origin add-spaces-sync-spoon
+
+# Clean up
+rm -rf /tmp/Spoons
+```
+
+The PR at Hammerspoon/Spoons#361 updates automatically when the branch is pushed.
