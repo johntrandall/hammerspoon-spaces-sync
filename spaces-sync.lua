@@ -86,6 +86,12 @@ local function isSyncedDisplay(uuid)
   return nameMatchesPatterns(name, M.config.syncedMonitorPatterns)
 end
 
+-- Get display name for logging
+local function getDisplayName(uuid)
+  local screen = hs.screen.find(uuid)
+  return screen and screen:name() or uuid:sub(1,8)
+end
+
 -- Get all currently synced display UUIDs (respects excludeLeftmost)
 local function getSyncedDisplayUUIDs()
   -- Collect all pattern-matched screens with their x-position
@@ -138,12 +144,6 @@ local function getSpaceAtIndex(displayUUID, index)
   local spaces = hs.spaces.spacesForScreen(screen)
   if not spaces then return nil end
   return spaces[index]
-end
-
--- Get display name for logging
-local function getDisplayName(uuid)
-  local screen = hs.screen.find(uuid)
-  return screen and screen:name() or uuid:sub(1,8)
 end
 
 -- Sync one display to match the space index of another
