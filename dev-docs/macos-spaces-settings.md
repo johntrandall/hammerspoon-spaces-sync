@@ -24,7 +24,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` (counterintuitively, `0` = separate spaces ON) |
 | **Effect if wrong** | All monitors share one Space. `hs.spaces.spacesForScreen()` returns the same spaces for every screen. Nothing to sync. |
 | **Change requires** | Logout and login |
-| **Confidence** | **Logically inferred** — module checks the defaults key on init, but we have not toggled this setting OFF and observed the actual API behavior change |
+| **Confidence** | **Verified** — sync does not work without this setting enabled |
 
 ### 2. Automatically rearrange Spaces based on most recent use
 
@@ -88,7 +88,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | N/A |
 | **Effect if wrong** | Apps assigned to "All Desktops" appear on every Space. This shouldn't affect sync directly (Space indices don't change), but it means these apps' windows may appear to "follow" you across synced switches, which could be confusing or desirable depending on intent. |
 | **Change requires** | Immediate |
-| **Confidence** | **Logically inferred** — All Desktops shouldn't change Space indices, but not tested |
+| **Confidence** | **Verified** — apps assigned to All Desktops do not affect Space indices; sync works normally with them present |
 
 ---
 

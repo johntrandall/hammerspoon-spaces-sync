@@ -6,7 +6,7 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 ### High Priority
 
-- [ ] **#1 Displays have separate Spaces** (logically inferred) — Set `spans-displays` to `1`, logout/login, check what `hs.spaces.spacesForScreen()` returns for each screen. Does it return identical space lists?
+- [x] **#1 Displays have separate Spaces** — ~~logically inferred~~ **Verified**: sync does not work without this.
 - [ ] **#2 Auto-rearrange Spaces** (logically inferred) — Set `mru-spaces` to `1`, create 3+ Spaces, use them in varying order, check if `hs.spaces.spacesForScreen()` indices shift over time.
 - [ ] **#3 Switch to app's Space (auto-swoosh)** (logically inferred) — Enable `workspaces-auto-swoosh`, Cmd-Tab to an app on a different Space, observe if SpacesSync fires a cascade sync.
 - [ ] **#5 Fullscreen Spaces** (suspected) — Make an app fullscreen on one synced monitor, switch Spaces on another. Does `spacesForScreen()` include fullscreen Spaces in its index? Does the index mapping between monitors break?
@@ -18,7 +18,7 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 ### Low Priority
 
-- [ ] **#6 All Desktops apps** (logically inferred) — Apps assigned to "All Desktops" (Dock > Options) appear on every Space. Verify Space indices are unaffected when these apps are present.
+- [x] **#6 All Desktops apps** — ~~logically inferred~~ **Verified**: apps on All Desktops do not affect sync.
 - [ ] **#9 Mission Control disabled** (logically inferred) — Set `mcx-expose-disabled` to true, verify the Spoon blocks gracefully on start.
 - [ ] **#10 Expose animation duration** (suspected) — Set a custom animation duration, verify `gotoSpace()` timing is unaffected.
 
