@@ -509,6 +509,18 @@ function M.init(userConfig)
     info("WARNING: tested on Hammerspoon " .. TESTED_HS .. ", you have " .. hsVer .. ". Older versions may behave differently.")
   end
 
+  -- Check macOS Mission Control settings
+  local separateSpaces = hs.execute("defaults read com.apple.spaces spans-displays 2>/dev/null"):gsub("%s+", "")
+  if separateSpaces == "1" then
+    info("ERROR: 'Displays have separate Spaces' is OFF. All monitors share one Space — nothing to sync. Enable it in System Settings > Desktop & Dock > Mission Control (requires logout).")
+    state.osBlocked = true
+  end
+
+  local mruSpaces = hs.execute("defaults read com.apple.dock mru-spaces 2>/dev/null"):gsub("%s+", "")
+  if mruSpaces == "1" then
+    info("WARNING: 'Automatically rearrange Spaces based on most recent use' is ON. This reorders Space indices and will break sync. Disable it in System Settings > Desktop & Dock > Mission Control.")
+  end
+
   rebuildPositionMap()
 
   -- Bind hotkey if configured

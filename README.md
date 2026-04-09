@@ -1,6 +1,8 @@
 # Spaces Sync
 
-Hammerspoon module that keeps macOS Spaces synchronized across monitors. When you switch Spaces on one monitor, the others in its sync group follow in lockstep.
+A [Hammerspoon](https://www.hammerspoon.org/) module (Lua) that keeps macOS Spaces synchronized across monitors. When you switch Spaces on one monitor, the others in its sync group follow in lockstep.
+
+Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool scripted in Lua.
 
 ## Install
 
@@ -106,6 +108,17 @@ spacesSync.isEnabled()
 - Two or more monitors with multiple Spaces configured
 
 No external Spoons or plugins required. Uses only built-in Hammerspoon extensions (`hs.screen`, `hs.spaces`, `hs.application`, `hs.timer`).
+
+### Required macOS settings
+
+In **System Settings > Desktop & Dock > Mission Control**:
+
+| Setting | Required | Why |
+|---|---|---|
+| **Displays have separate Spaces** | ON | If off, all monitors share one Space — nothing to sync. Requires logout to change. |
+| **Automatically rearrange Spaces based on most recent use** | OFF | If on, macOS reorders Space indices by recency, breaking index-based sync. |
+
+The module checks these on init and warns if they're misconfigured.
 
 ## Compatibility
 
