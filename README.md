@@ -13,8 +13,8 @@ Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool
 ### From source
 
 ```bash
-git clone https://github.com/johnrandall/macos-spaces-multimonitor-sync-hammerspoon.git
-cd macos-spaces-multimonitor-sync-hammerspoon
+git clone https://github.com/johntrandall/hammerspoon-spaces-sync.git
+cd hammerspoon-spaces-sync
 ./install.sh
 ```
 
@@ -43,9 +43,9 @@ hs.loadSpoon("SpacesSync")
 spoon.SpacesSync.syncGroups = {
   { 2, 3, 4 },    -- right three monitors sync together
 }
-spoon.SpacesSync.debug = true
+spoon.SpacesSync.logger.setLogLevel('debug')  -- verbose logging
 
-spoon.SpacesSync:bindHotkeys({ toggle = {{"ctrl", "alt", "cmd"}, "Y"} })
+spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)
 spoon.SpacesSync:start()
 ```
 
@@ -56,7 +56,7 @@ spoon.SpacesSync:start()
 | `syncGroups`      | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers.                                       |
 | `switchDelay`     | `0.3`        | Seconds between each `gotoSpace` call.                                                                       |
 | `debounceSeconds` | `0.8`        | Seconds after sync before watcher re-enables.                                                                |
-| `debug`           | `false`      | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
+| `logger`          | `hs.logger` at `info` | Logger object. Set level with `spoon.SpacesSync.logger.setLogLevel('debug')`.                         |
 
 Hotkeys are configured via `:bindHotkeys()`:
 
@@ -142,7 +142,7 @@ In **System Settings > Desktop & Dock > Mission Control**:
 | **When switching to an application, switch to a Space with open windows** | OFF | Cmd-Tab/Dock clicks auto-switch Spaces, which SpacesSync interprets as a user switch and syncs all targets. |
 | **Stage Manager** | OFF | Untested interaction with SpacesSync. |
 
-The Spoon checks all four on start and warns if they're misconfigured.
+The Spoon checks the required and first recommended setting on start and warns if they're misconfigured.
 
 A setup script is included to configure everything:
 
@@ -170,8 +170,8 @@ If you find it works (or breaks) on a different version, please open an issue or
 
 All output goes to the Hammerspoon console (open via the menubar icon or `hs -c`).
 
-- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on start. Enough to see what the Spoon is doing.
-- **Debug mode** (`debug = true`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
+- **Info level** (default): logs syncs, skips, warnings, errors, version checks, and the position map on start. Enough to see what the Spoon is doing.
+- **Debug level** (`spoon.SpacesSync.logger.setLogLevel('debug')`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
 
 You can also tail logs from the terminal:
 
