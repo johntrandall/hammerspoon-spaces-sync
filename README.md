@@ -58,7 +58,7 @@ spacesSync.init({
 | `hotkey` | `{ {"ctrl","alt","cmd"}, "Y" }` | Hotkey to toggle sync. Set to `false` to disable. |
 | `switchDelay` | `0.3` | Seconds between each `gotoSpace` call. |
 | `debounceSeconds` | `0.8` | Seconds after sync before watcher re-enables. |
-| `debug` | `false` | Log to Hammerspoon console. |
+| `debug` | `false` | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
 
 ### Position numbers
 
@@ -99,9 +99,65 @@ spacesSync.isEnabled()
 
 ## Requirements
 
-- macOS Sequoia 15+ (tested on 15.5; YMMV on other 15.x releases — `hs.spaces` uses private APIs that can break between point releases)
+- macOS Sequoia 15.0+ (blocks activation on macOS 14 and earlier)
 - Hammerspoon 1.0.0+
 - Accessibility permissions for Hammerspoon
+- Two or more monitors with multiple Spaces configured
+
+## Compatibility
+
+This module has been tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1** on a 4-monitor setup (4x LG SDQHD).
+
+`hs.spaces` relies on private macOS APIs that Apple does not document or guarantee. These APIs can and do change between point releases. If you're running a different macOS version:
+
+- **macOS 15.x (other than 15.5):** May work, may not. The module will load but warn you that your version is untested.
+- **macOS 14 and earlier:** The module will refuse to enable and log an error. The `hs.spaces` APIs behave differently on older macOS versions.
+- **macOS 16+:** Unknown. Test with `debug = true` and check the Hammerspoon console.
+
+If you find it works (or breaks) on a different version, please open an issue or PR.
+
+## For AI agents
+
+If you're an AI agent working on this codebase, read `CLAUDE.md` first — it points to `dev-docs/hammerspoon-quirks.md` which documents critical `hs.spaces` behaviors.
+
+### Reading the Hammerspoon console
+
+The `hs` CLI provides access to the Hammerspoon runtime from the terminal:
+
+```bash
+# Reload config
+hs -c 'hs.reload()'
+
+# Check if module loaded
+hs -c 'local ss = require("spaces-sync"); return "enabled=" .. tostring(ss.isEnabled())'
+
+# Run arbitrary Lua in the Hammerspoon runtime
+hs -c 'return hs.host.operatingSystemVersion()'
+```
+
+To read logs, use the macOS unified log:
+
+```bash
+# Tail SpacesSync logs live
+log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
+
+# Show recent logs
+/usr/bin/log show --last 5m --predicate 'process == "Hammerspoon"' | grep SpacesSync
+```
+
+### Logging levels
+
+- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on init. Enough to see what the module is doing.
+- **Debug mode** (`debug = true`): adds watcher state dumps on every fire, per-call dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
+
+## Contributing
+
+Contributions are welcome! This is a small project — open an issue or submit a PR.
+
+Areas where help is especially useful:
+- Testing on other macOS versions and reporting results
+- Testing with non-standard monitor arrangements (vertical stacks, mixed resolutions)
+- Automated testing strategies (mocking `hs.spaces` for unit tests)
 
 ## License
 

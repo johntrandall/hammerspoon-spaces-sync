@@ -25,6 +25,44 @@ require("hs.application")
 require("hs.timer")
 
 -- ============================================================================
+-- VERSION REQUIREMENTS
+-- ============================================================================
+
+local TESTED_OS = "15.5"
+local MIN_OS_MAJOR = 15
+local TESTED_HS = "1.1.1"
+
+local function getOSVersion()
+  local raw = hs.host.operatingSystemVersion()
+  return {
+    major = raw.major,
+    minor = raw.minor,
+    patch = raw.patch,
+    str = raw.major .. "." .. raw.minor .. "." .. raw.patch,
+  }
+end
+
+local function getHSVersion()
+  return hs.processInfo.version or "unknown"
+end
+
+-- Compare "1.1.1" style version strings. Returns -1, 0, or 1.
+local function compareVersions(a, b)
+  local function parts(v)
+    local t = {}
+    for n in tostring(v):gmatch("(%d+)") do t[#t+1] = tonumber(n) end
+    return t
+  end
+  local pa, pb = parts(a), parts(b)
+  for i = 1, math.max(#pa, #pb) do
+    local va, vb = pa[i] or 0, pb[i] or 0
+    if va < vb then return -1 end
+    if va > vb then return 1 end
+  end
+  return 0
+end
+
+-- ============================================================================
 -- DEFAULTS
 -- ============================================================================
 
@@ -53,7 +91,8 @@ local DEFAULTS = {
   -- Prevents watcher from reacting to our own gotoSpace calls.
   debounceSeconds = 0.8,
 
-  -- Log to Hammerspoon console.
+  -- Verbose debug logging (watcher state dumps, per-call details).
+  -- Normal mode still logs syncs, warnings, and errors.
   debug = false,
 }
 
@@ -69,14 +108,13 @@ local state = {
   spaceWatcher = nil,
   debounceTimer = nil,
   hotkey = nil,
+  osBlocked = false,
 }
 
--- Position map: rebuilt on init
-local positionToUUID = {}   -- posIndex -> uuid
-local uuidToPosition = {}   -- uuid -> posIndex
+local positionToUUID = {}
+local uuidToPosition = {}
 local totalScreens = 0
 
--- Merge user overrides onto defaults
 local function mergeConfig(userConfig)
   config = {}
   for k, v in pairs(DEFAULTS) do
@@ -93,7 +131,13 @@ end
 -- LOGGING
 -- ============================================================================
 
-local function log(msg)
+-- Always printed (syncs, warnings, errors, lifecycle)
+local function info(msg)
+  print("[SpacesSync] " .. msg)
+end
+
+-- Only printed when debug = true (watcher dumps, per-call details)
+local function dbg(msg)
   if config.debug then
     print("[SpacesSync] " .. msg)
   end
@@ -124,7 +168,6 @@ local function rebuildPositionMap()
   end
 end
 
--- Display label for logging: "LG SDQHD (1) [pos 2/4]"
 local function getDisplayLabel(uuid)
   local screen = hs.screen.find(uuid)
   local name = screen and screen:name() or uuid:sub(1, 8)
@@ -156,7 +199,7 @@ local function getPartnersFor(uuid)
           if partnerUUID then
             table.insert(partners, partnerUUID)
           else
-            log("WARNING: group references pos " .. gpos .. " but only " .. totalScreens .. " screens connected")
+            info("WARNING: group references pos " .. gpos .. " but only " .. totalScreens .. " screens connected")
           end
         end
       end
@@ -206,44 +249,44 @@ local function syncDisplayToTarget(sourceUUID, sourceSpaceID, targetUUID)
 
   local sourceIndex = getSpaceIndex(sourceUUID, sourceSpaceID)
   if not sourceIndex then
-    log("  " .. label .. ": SKIP (source space index not found)")
+    dbg("  " .. label .. ": SKIP (source space index not found)")
     return
   end
 
   if sourceIndex > targetCount then
-    log("  " .. label .. " (" .. targetCount .. " spaces): SKIP (no space at index " .. sourceIndex .. ")")
+    info("  " .. label .. " (" .. targetCount .. " spaces): SKIP (no space at index " .. sourceIndex .. ")")
     return
   end
 
   local targetSpaceID = getSpaceAtIndex(targetUUID, sourceIndex)
   if not targetSpaceID then
-    log("  " .. label .. ": SKIP (getSpaceAtIndex returned nil)")
+    dbg("  " .. label .. ": SKIP (getSpaceAtIndex returned nil)")
     return
   end
 
   local targetScreen = hs.screen.find(targetUUID)
   if not targetScreen then
-    log("  " .. label .. ": SKIP (screen not found)")
+    dbg("  " .. label .. ": SKIP (screen not found)")
     return
   end
 
   local currentSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
   local currentIdx = getSpaceIndex(targetUUID, currentSpace) or "?"
   if currentSpace == targetSpaceID then
-    log("  " .. label .. ": already at index " .. sourceIndex)
+    dbg("  " .. label .. ": already at index " .. sourceIndex)
     return
   end
 
-  log("  " .. label .. ": index " .. tostring(currentIdx) .. " -> " .. sourceIndex)
+  info("  " .. label .. ": index " .. tostring(currentIdx) .. " -> " .. sourceIndex)
 
   local ok, err = pcall(function()
     hs.spaces.gotoSpace(targetSpaceID)
   end)
 
   if ok then
-    log("  " .. label .. ": dispatched")
+    dbg("  " .. label .. ": dispatched")
   else
-    log("  " .. label .. ": ERROR — " .. tostring(err))
+    info("  " .. label .. ": ERROR — " .. tostring(err))
   end
 end
 
@@ -261,7 +304,7 @@ local function setupWatcher()
   state.spaceWatcher = hs.spaces.watcher.new(function()
     if not state.enabled then return end
     if state.syncInProgress then
-      log("WATCHER: ignored (sync in progress)")
+      dbg("WATCHER: ignored (sync in progress)")
       return
     end
 
@@ -273,7 +316,7 @@ local function setupWatcher()
         local idx = getSpaceIndex(uuid, spaceID) or "?"
         table.insert(parts, getDisplayLabel(uuid) .. "=idx" .. tostring(idx))
       end
-      log("WATCHER: " .. table.concat(parts, ", "))
+      dbg("WATCHER: " .. table.concat(parts, ", "))
     end
 
     -- Find which display changed
@@ -284,14 +327,14 @@ local function setupWatcher()
       if lastSpaceID and lastSpaceID ~= spaceID then
         local oi = getSpaceIndex(uuid, lastSpaceID) or "?"
         local ni = getSpaceIndex(uuid, spaceID) or "?"
-        log("CHANGED: " .. getDisplayLabel(uuid) .. " index " .. tostring(oi) .. " -> " .. tostring(ni))
+        dbg("CHANGED: " .. getDisplayLabel(uuid) .. " index " .. tostring(oi) .. " -> " .. tostring(ni))
 
         if not changedUUID then
           changedUUID = uuid
           changedSpaceID = spaceID
           newIndex = ni
         else
-          log("  (multiple changed; syncing first only)")
+          dbg("  (multiple changed; syncing first only)")
         end
       end
     end
@@ -304,7 +347,7 @@ local function setupWatcher()
     -- Find sync partners
     local partners = getPartnersFor(changedUUID)
     if not partners or #partners == 0 then
-      log("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
+      dbg("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
       state.lastActiveSpaces = currentSpaces
       return
     end
@@ -313,12 +356,10 @@ local function setupWatcher()
     for _, uuid in ipairs(partners) do
       table.insert(names, getDisplayLabel(uuid))
     end
-    log("SYNC: index " .. tostring(newIndex) .. " -> " .. table.concat(names, ", "))
+    info("SYNC: " .. getDisplayLabel(changedUUID) .. " -> index " .. tostring(newIndex) .. " | partners: " .. table.concat(names, ", "))
 
-    -- Block re-entrant sync
     state.syncInProgress = true
 
-    -- Chain switches with delay
     local function syncNext(i)
       if i > #partners then
         state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
@@ -329,14 +370,14 @@ local function setupWatcher()
             local idx = getSpaceIndex(uuid, spaceID) or "?"
             table.insert(parts, getDisplayLabel(uuid) .. "=idx" .. tostring(idx))
           end
-          log("DONE: " .. table.concat(parts, ", "))
+          dbg("DONE: " .. table.concat(parts, ", "))
         end
 
         if state.debounceTimer then state.debounceTimer:stop() end
         state.debounceTimer = hs.timer.doAfter(config.debounceSeconds, function()
           state.syncInProgress = false
           state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
-          log("Watcher re-enabled")
+          dbg("Watcher re-enabled")
         end)
         return
       end
@@ -351,14 +392,14 @@ local function setupWatcher()
   end)
 
   state.spaceWatcher:start()
-  log("Watcher started")
+  dbg("Watcher started")
 end
 
 local function stopWatcher()
   if state.spaceWatcher then
     state.spaceWatcher:stop()
     state.spaceWatcher = nil
-    log("Watcher stopped")
+    dbg("Watcher stopped")
   end
 end
 
@@ -368,12 +409,18 @@ end
 
 --- Enable space syncing.
 function M.enable()
+  if state.osBlocked then
+    info("ERROR: macOS " .. MIN_OS_MAJOR .. "+ required. Space sync will not activate.")
+    hs.alert.show("Space Sync: blocked (macOS " .. MIN_OS_MAJOR .. "+ required)")
+    return
+  end
+
   state.enabled = true
   state.syncInProgress = false
   state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
   setupWatcher()
   hs.alert.show("Space Sync: ON")
-  log("Enabled")
+  info("Enabled")
 end
 
 --- Disable space syncing.
@@ -381,7 +428,7 @@ function M.disable()
   state.enabled = false
   stopWatcher()
   hs.alert.show("Space Sync: OFF")
-  log("Disabled")
+  info("Disabled")
 end
 
 --- Toggle space syncing on/off.
@@ -399,12 +446,9 @@ function M.isEnabled()
 end
 
 -- Load .spaces-sync-config.lua from the same directory as this module.
--- Returns the table it exports, or nil if missing/empty/errored.
 local function loadConfigFile()
-  -- Resolve the directory of this source file
   local src = debug.getinfo(1, "S").source
   if src:sub(1, 1) == "@" then src = src:sub(2) end
-  -- Follow symlink if needed
   local handle = io.popen("readlink '" .. src:gsub("'", "'\\''") .. "' 2>/dev/null")
   local resolved = handle:read("*a"):gsub("%s+$", "")
   handle:close()
@@ -443,7 +487,26 @@ function M.init(userConfig)
   end
   mergeConfig(userConfig)
 
-  log("Initializing")
+  info("Initializing (spaces-sync)")
+
+  -- Check macOS version
+  local os = getOSVersion()
+  if os.major < MIN_OS_MAJOR then
+    info("ERROR: macOS " .. MIN_OS_MAJOR .. "+ required (you have " .. os.str .. "). Space sync will not activate.")
+    state.osBlocked = true
+  elseif os.str ~= TESTED_OS then
+    info("WARNING: tested on macOS " .. TESTED_OS .. ", you have " .. os.str .. ". hs.spaces uses private APIs — behavior may differ.")
+    state.osBlocked = false
+  else
+    state.osBlocked = false
+  end
+
+  -- Check Hammerspoon version
+  local hsVer = getHSVersion()
+  if compareVersions(hsVer, TESTED_HS) < 0 then
+    info("WARNING: tested on Hammerspoon " .. TESTED_HS .. ", you have " .. hsVer .. ". Older versions may behave differently.")
+  end
+
   rebuildPositionMap()
 
   -- Bind hotkey if configured
@@ -458,13 +521,13 @@ function M.init(userConfig)
   end
 
   -- Log position map
-  log("Screens (" .. totalScreens .. ", reading order):")
+  info("Screens (" .. totalScreens .. ", reading order):")
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid then
       local screen = hs.screen.find(uuid)
       local f = screen:frame()
-      log("  pos " .. pos .. ": " .. screen:name() .. " (x=" .. f.x .. ", y=" .. f.y .. ")")
+      info("  pos " .. pos .. ": " .. screen:name() .. " (x=" .. f.x .. ", y=" .. f.y .. ")")
     end
   end
 
@@ -479,18 +542,22 @@ function M.init(userConfig)
         table.insert(members, "pos " .. pos .. " (not connected)")
       end
     end
-    log("Group " .. gi .. ": " .. table.concat(members, ", "))
+    info("Group " .. gi .. ": " .. table.concat(members, ", "))
   end
 
   -- Log independent monitors
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid and not getPartnersFor(uuid) then
-      log("Independent: pos " .. pos .. " (" .. hs.screen.find(uuid):name() .. ")")
+      info("Independent: pos " .. pos .. " (" .. hs.screen.find(uuid):name() .. ")")
     end
   end
 
-  log("Ready" .. (config.hotkey and (". Toggle: " .. table.concat(config.hotkey[1], "+") .. "+" .. config.hotkey[2]) or ""))
+  local hotkeyLabel = ""
+  if config.hotkey then
+    hotkeyLabel = ". Toggle: " .. table.concat(config.hotkey[1], "+") .. "+" .. config.hotkey[2]
+  end
+  info("Ready" .. hotkeyLabel .. (config.debug and " (debug mode)" or ""))
 end
 
 -- Clean up on reload
