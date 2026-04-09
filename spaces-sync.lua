@@ -9,6 +9,12 @@
 
 local M = {}
 
+-- Preload extensions to avoid lazy-load latency during sync
+require("hs.screen")
+require("hs.spaces")
+require("hs.application")
+require("hs.timer")
+
 -- ============================================================================
 -- CONFIGURATION
 -- ============================================================================
@@ -86,10 +92,31 @@ local function isSyncedDisplay(uuid)
   return nameMatchesPatterns(name, M.config.syncedMonitorPatterns)
 end
 
--- Get display name for logging
+-- Build a sorted position map: uuid -> { posIndex, total, x }
+-- Cached per reload; call rebuildPositionMap() if screens change
+M._positionMap = {}
+local function rebuildPositionMap()
+  local screens = hs.screen.allScreens()
+  local sorted = {}
+  for _, s in ipairs(screens) do
+    table.insert(sorted, { uuid = s:getUUID(), x = s:frame().x })
+  end
+  table.sort(sorted, function(a, b) return a.x < b.x end)
+  M._positionMap = {}
+  for i, entry in ipairs(sorted) do
+    M._positionMap[entry.uuid] = { posIndex = i, total = #sorted, x = entry.x }
+  end
+end
+
+-- Get display name for logging: "LG SDQHD (1) [pos 2/4, x=2048]"
 local function getDisplayName(uuid)
   local screen = hs.screen.find(uuid)
-  return screen and screen:name() or uuid:sub(1,8)
+  local name = screen and screen:name() or uuid:sub(1,8)
+  local pos = M._positionMap[uuid]
+  if pos then
+    return name .. " [pos " .. pos.posIndex .. "/" .. pos.total .. ", x=" .. pos.x .. "]"
+  end
+  return name
 end
 
 -- Get all currently synced display UUIDs (respects excludeLeftmost)
@@ -146,43 +173,72 @@ local function getSpaceAtIndex(displayUUID, index)
   return spaces[index]
 end
 
+-- Count spaces on a display
+local function getSpaceCount(displayUUID)
+  local screen = hs.screen.find(displayUUID)
+  if not screen then return 0 end
+  local spaces = hs.spaces.spacesForScreen(screen)
+  return spaces and #spaces or 0
+end
+
 -- Sync one display to match the space index of another (caller manages syncInProgress)
 local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDisplayUUID)
+  local targetName = getDisplayName(targetDisplayUUID)
+  local targetSpaceCount = getSpaceCount(targetDisplayUUID)
+  local sourceSpaceCount = getSpaceCount(sourceDisplayUUID)
+
   -- Find the index of the source space
   local sourceIndex = getSpaceIndex(sourceDisplayUUID, sourceSpaceID)
   if not sourceIndex then
-    log("Could not find source space index")
+    log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — could not find source space index")
+    return
+  end
+
+  -- Check if target has enough spaces
+  if sourceIndex > targetSpaceCount then
+    log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — no space at index " .. sourceIndex .. " (source has " .. sourceSpaceCount .. " spaces)")
     return
   end
 
   -- Get the space at that index on the target display
   local targetSpaceID = getSpaceAtIndex(targetDisplayUUID, sourceIndex)
   if not targetSpaceID then
-    log("Target display has no space at index " .. sourceIndex)
+    log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — getSpaceAtIndex returned nil for index " .. sourceIndex)
     return
   end
 
   -- Check if already on target space (avoid unnecessary switch)
   local targetScreen = hs.screen.find(targetDisplayUUID)
   if not targetScreen then
-    log("Could not find target screen")
+    log("  " .. targetName .. ": SKIP — screen not found")
     return
   end
 
   local currentTargetSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
+  local currentIdx = getSpaceIndex(targetDisplayUUID, currentTargetSpace) or "?"
   if currentTargetSpace == targetSpaceID then
-    log("Target display already showing correct space")
+    log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): already at index " .. sourceIndex .. ", no switch needed")
     return
   end
 
-  log("Syncing " .. getDisplayName(targetDisplayUUID) .. " to space index " .. sourceIndex)
+  log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): switching from index " .. tostring(currentIdx) .. " -> " .. sourceIndex .. " (spaceID=" .. targetSpaceID .. ")")
 
   local success, err = pcall(function()
     hs.spaces.gotoSpace(targetSpaceID)
   end)
 
   if not success then
-    log("ERROR syncing: " .. tostring(err))
+    log("  " .. targetName .. ": ERROR — " .. tostring(err))
+    return
+  end
+
+  -- Verify the switch actually happened
+  local postSwitchSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
+  local postSwitchIdx = getSpaceIndex(targetDisplayUUID, postSwitchSpace) or "?"
+  if postSwitchSpace == targetSpaceID then
+    log("  " .. targetName .. ": VERIFIED at index " .. sourceIndex)
+  else
+    log("  " .. targetName .. ": FAILED — gotoSpace returned OK but still at index " .. tostring(postSwitchIdx) .. " (expected " .. sourceIndex .. ")")
   end
 end
 
@@ -201,55 +257,125 @@ local function setupWatcher()
   -- Create new watcher
   M.state.spaceWatcher = hs.spaces.watcher.new(function()
     if not M.state.enabled then return end
-    if M.state.syncInProgress then return end
+    if M.state.syncInProgress then
+      log("WATCHER fired but syncInProgress=true, ignoring")
+      return
+    end
 
     -- Get current state
     local currentSpaces = hs.spaces.activeSpaces() or {}
 
+    -- Log all current space indices for context
+    local stateLog = {}
+    for uuid, spaceID in pairs(currentSpaces) do
+      local idx = getSpaceIndex(uuid, spaceID) or "?"
+      table.insert(stateLog, getDisplayName(uuid) .. "=idx" .. tostring(idx))
+    end
+    log("WATCHER fired. Current spaces: " .. table.concat(stateLog, ", "))
+
     -- Find which display changed
+    local changedUUID = nil
+    local changedSpaceID = nil
+    local oldIndex = nil
+    local newIndex = nil
+
     for displayUUID, currentSpaceID in pairs(currentSpaces) do
       local lastSpaceID = M.state.lastActiveSpaces[displayUUID]
-
-      -- Check if this display changed
       if lastSpaceID and lastSpaceID ~= currentSpaceID then
-        log("Display " .. getDisplayName(displayUUID) .. " changed space")
+        local oi = getSpaceIndex(displayUUID, lastSpaceID) or "?"
+        local ni = getSpaceIndex(displayUUID, currentSpaceID) or "?"
+        log("CHANGED: " .. getDisplayName(displayUUID) .. " space index " .. tostring(oi) .. " -> " .. tostring(ni))
 
-        -- Only sync if change is on one of the synced displays (filtered list)
-        local syncedUUIDs = getSyncedDisplayUUIDs()
-        local isInSyncGroup = false
-        for _, uuid in ipairs(syncedUUIDs) do
-          if uuid == displayUUID then isInSyncGroup = true; break end
-        end
-
-        if isInSyncGroup then
-          log("This is a synced display, syncing partners...")
-
-          -- Block re-entrant sync while we switch all partners
-          M.state.syncInProgress = true
-
-          -- Sync all other synced displays to match this one
-          for _, otherUUID in ipairs(syncedUUIDs) do
-            if otherUUID ~= displayUUID then
-              syncDisplayToTarget(displayUUID, currentSpaceID, otherUUID)
-            end
-          end
-
-          -- Release sync flag after debounce period
-          if M.state.debounceTimer then
-            M.state.debounceTimer:stop()
-          end
-          M.state.debounceTimer = hs.timer.doAfter(M.config.debounceSeconds, function()
-            M.state.syncInProgress = false
-            log("Sync debounce released")
-          end)
+        if not changedUUID then
+          changedUUID = displayUUID
+          changedSpaceID = currentSpaceID
+          oldIndex = oi
+          newIndex = ni
         else
-          log("This is an independent display, no sync needed")
+          log("  (multiple displays changed simultaneously, only syncing first)")
         end
       end
     end
 
-    -- Update state for next iteration
-    M.state.lastActiveSpaces = currentSpaces
+    if not changedUUID then
+      log("WATCHER: no display change detected, updating state and returning")
+      M.state.lastActiveSpaces = currentSpaces
+      return
+    end
+
+    -- Only sync if change is on one of the synced displays (filtered list)
+    local syncedUUIDs = getSyncedDisplayUUIDs()
+    local isInSyncGroup = false
+    for _, uuid in ipairs(syncedUUIDs) do
+      if uuid == changedUUID then isInSyncGroup = true; break end
+    end
+
+    if not isInSyncGroup then
+      log("SKIP: " .. getDisplayName(changedUUID) .. " is not in sync group (excluded or independent)")
+      M.state.lastActiveSpaces = currentSpaces
+      return
+    end
+
+    -- Determine partners to sync
+    local partners = {}
+    for _, otherUUID in ipairs(syncedUUIDs) do
+      if otherUUID ~= changedUUID then
+        table.insert(partners, getDisplayName(otherUUID))
+      end
+    end
+    log("SYNCING: " .. getDisplayName(changedUUID) .. " changed to index " .. tostring(newIndex) .. ". Syncing partners: " .. table.concat(partners, ", "))
+    log("Disabling watcher while we sync to other spaces...")
+
+    -- Block re-entrant sync while we switch all partners
+    M.state.syncInProgress = true
+
+    -- Build list of partners to sync
+    local partnersToSync = {}
+    for _, otherUUID in ipairs(syncedUUIDs) do
+      if otherUUID ~= changedUUID then
+        table.insert(partnersToSync, otherUUID)
+      end
+    end
+
+    -- Chain gotoSpace calls with delay between each
+    -- (rapid back-to-back calls get dropped by macOS)
+    local switchDelay = 0.3  -- seconds between each gotoSpace
+    local function syncPartner(index)
+      if index > #partnersToSync then
+        -- All partners done — snapshot and release
+        M.state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+
+        local postLog = {}
+        for uuid, spaceID in pairs(M.state.lastActiveSpaces) do
+          local idx = getSpaceIndex(uuid, spaceID) or "?"
+          table.insert(postLog, getDisplayName(uuid) .. "=idx" .. tostring(idx))
+        end
+        log("ALL PARTNERS DONE. Post-sync spaces: " .. table.concat(postLog, ", "))
+
+        -- Release sync flag after debounce period
+        if M.state.debounceTimer then
+          M.state.debounceTimer:stop()
+        end
+        M.state.debounceTimer = hs.timer.doAfter(M.config.debounceSeconds, function()
+          M.state.syncInProgress = false
+          M.state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+          log("Debounce released, watcher re-enabled")
+        end)
+        return
+      end
+
+      local otherUUID = partnersToSync[index]
+      log("Syncing partner " .. index .. "/" .. #partnersToSync .. "...")
+      syncDisplayToTarget(changedUUID, changedSpaceID, otherUUID)
+
+      -- Wait before switching next partner
+      hs.timer.doAfter(switchDelay, function()
+        syncPartner(index + 1)
+      end)
+    end
+
+    -- Start the chain
+    syncPartner(1)
   end)
 
   M.state.spaceWatcher:start()
@@ -314,6 +440,9 @@ end
 
 function M.init()
   log("Initializing")
+
+  -- Build position map for display labels
+  rebuildPositionMap()
 
   -- Bind hotkey to toggle (Ctrl+Alt+Cmd+Y)
   hs.hotkey.bind({"ctrl", "alt", "cmd"}, "Y", function()
