@@ -24,7 +24,7 @@ This symlinks `Source/SpacesSync.spoon` into `~/.hammerspoon/Spoons/`.
 
 Download `SpacesSync.spoon.zip`, unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
 
-### Then add to `~/.hammerspoon/init.lua`
+### Add to `~/.hammerspoon/init.lua`
 
 ```lua
 hs.loadSpoon("SpacesSync")
@@ -146,13 +146,15 @@ In **System Settings > Desktop & Dock > Mission Control**:
 
 **System Settings > Accessibility > Display > Reduce motion** disables the Spaces sliding animation. This makes `gotoSpace()` complete faster, which can improve sync reliability — especially with 3+ monitors. The tradeoff is that Space transitions become an instant cut instead of a slide.
 
-The Spoon checks the required and first recommended setting on start and warns if they're misconfigured.
+### Setup script
 
-A setup script is included to configure everything:
+A setup script is included to check and configure the required and recommended settings:
 
 ```bash
 ./configure-macos.sh
 ```
+
+The Spoon also checks the required and first recommended setting on start and warns if they're misconfigured.
 
 For the full analysis of every macOS setting that could affect sync, see [dev-docs/macos-spaces-settings.md](dev-docs/macos-spaces-settings.md).
 
@@ -187,9 +189,7 @@ log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
 /usr/bin/log show --last 5m --predicate 'process == "Hammerspoon"' | grep SpacesSync
 ```
 
-## For AI agents
-
-If you're an AI agent working on this codebase, read `CLAUDE.md` first — it points to `dev-docs/hammerspoon-and-spaces-quirks.md` which documents critical `hs.spaces` behaviors.
+## Debugging from the terminal
 
 The `hs` CLI provides access to the Hammerspoon runtime from the terminal:
 
@@ -198,6 +198,8 @@ hs -c 'hs.reload()'
 hs -c 'return tostring(spoon.SpacesSync:isEnabled())'
 hs -c 'return hs.host.operatingSystemVersion()'
 ```
+
+For AI agents working on this codebase, read `CLAUDE.md` first.
 
 ## Contributing
 
