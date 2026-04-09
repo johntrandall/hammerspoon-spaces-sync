@@ -6,6 +6,8 @@ A [Hammerspoon](https://www.hammerspoon.org/) Spoon that keeps macOS Spaces sync
 
 Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool scripted in Lua.
 
+> **Note:** This Spoon has been [submitted for inclusion](https://github.com/Hammerspoon/Spoons/pull/361) in the official [Hammerspoon Spoons repository](https://github.com/Hammerspoon/Spoons). Once merged, it will be installable via `SpoonInstall` and the [Spoons directory](http://www.hammerspoon.org/Spoons/).
+
 ## Install
 
 ### From source
