@@ -1,6 +1,6 @@
 # macos-spaces-multimonitor-sync-hammerspoon
 
-Hammerspoon module that synchronizes macOS Spaces across monitors in configurable sync groups.
+Hammerspoon Spoon that synchronizes macOS Spaces across monitors in configurable sync groups.
 
 ## Before You Start
 
@@ -8,10 +8,11 @@ Hammerspoon module that synchronizes macOS Spaces across monitors in configurabl
 
 ## Project Structure
 
-- `spaces-sync.lua` — the module (symlinked into `~/.hammerspoon/`)
-- `.spaces-sync-config.lua` — personal config (gitignored, loaded at runtime)
-- `spaces-sync-config.example.lua` — config template for new users
-- `dev-docs/` — development notes and quirks documentation
+- `Source/SpacesSync.spoon/init.lua` — the Spoon (symlinked into `~/.hammerspoon/Spoons/`)
+- `Source/SpacesSync.spoon/docs.json` — generated documentation
+- `install.sh` — symlinks the Spoon into Hammerspoon
+- `configure-macos.sh` — checks/sets required macOS Mission Control settings
+- `dev-docs/` — development notes, quirks, settings analysis, publication checklist
 
 ## Available Documentation MCPs
 
@@ -19,4 +20,8 @@ Hammerspoon module that synchronizes macOS Spaces across monitors in configurabl
 
 ## Testing
 
-No automated tests yet. Testing requires a multi-monitor Mac — `hs.spaces.gotoSpace()` needs real displays. Toggle debug logging (`debug = true` in config) and watch the Hammerspoon console.
+No automated tests. Testing requires a multi-monitor Mac — `hs.spaces.gotoSpace()` needs real displays. Set logger to debug level (`spoon.SpacesSync.logger.setLogLevel('debug')`) and watch the Hammerspoon console.
+
+## Publishing
+
+See `dev-docs/publication-checklist.md` before releasing a new version.
