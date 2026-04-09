@@ -9,8 +9,8 @@ echo "Configuring macOS for SpacesSync..."
 echo ""
 
 # Critical: Displays have separate Spaces (requires logout)
-current=$(defaults read com.apple.spaces spans-displays 2>/dev/null || echo "missing")
-if [ "$current" != "0" ]; then
+SPANS_DISPLAYS_BEFORE=$(defaults read com.apple.spaces spans-displays 2>/dev/null || echo "missing")
+if [ "$SPANS_DISPLAYS_BEFORE" != "0" ]; then
   echo "  [CRITICAL] Setting 'Displays have separate Spaces' to ON..."
   defaults write com.apple.spaces spans-displays -bool false
   echo "  ⚠️  LOGOUT REQUIRED for this to take effect."
@@ -57,7 +57,7 @@ fi
 echo ""
 echo "Done."
 echo ""
-if [ "$current" != "0" ] && [ "$(defaults read com.apple.spaces spans-displays 2>/dev/null)" = "1" ]; then
+if [ "$SPANS_DISPLAYS_BEFORE" != "0" ]; then
   echo "⚠️  'Displays have separate Spaces' was changed — log out and back in for it to take effect."
 fi
-echo "Run SpacesSync with debug=true to verify settings are detected correctly."
+echo "Set logger to debug to verify: spoon.SpacesSync.logger.setLogLevel('debug')"
