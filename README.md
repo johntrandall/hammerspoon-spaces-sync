@@ -31,7 +31,7 @@ Copy the example config:
 cp spaces-sync-config.example.lua .spaces-sync-config.lua
 ```
 
-Edit `.spaces-sync-config.lua` (gitignored) to match your setup:
+Edit the `.spaces-sync-config.lua` to match your setup:
 
 ```lua
 return {
@@ -43,7 +43,7 @@ return {
 }
 ```
 
-If the config file is missing or empty, built-in defaults are used (`{1, 2}` synced, debug off).
+If the config file is missing or empty, built-in defaults are used.
 
 You can also pass config directly:
 
@@ -77,9 +77,21 @@ Monitors are assigned position numbers in reading order: left-to-right, then top
   pos 4: LG SDQHD (2) (x=6144.0, y=25.0)
 ```
 
+### Excluding monitors
+
+Monitors not listed in any sync group are independent — they're never affected by sync. To exclude a monitor, simply leave its position number out of all groups.
+
+For example, with 4 monitors and only the right three synced:
+
+```lua
+syncGroups = {
+  { 2, 3, 4 },  -- pos 1 is independent
+}
+```
+
 ### Space count mismatches
 
-If the source monitor switches to space index 5 but a partner only has 3 spaces, that partner is skipped with a log message.
+If the triggering monitor switches to space index 5 but a target only has 3 spaces, that target is skipped with a log message.
 
 ## Usage
 
@@ -98,9 +110,11 @@ spacesSync.isEnabled()
 
 1. `hs.spaces.watcher` detects a space change on any monitor
 2. If that monitor is in a sync group, find the space index it switched to
-3. For each partner in the group, call `hs.spaces.gotoSpace()` to switch to the same index
+3. For each target in the group, call `hs.spaces.gotoSpace()` to switch to the same index
 4. Switches are chained with a delay (macOS drops rapid back-to-back calls)
 5. A debounce period prevents the watcher from reacting to its own switches
+
+For detailed notes on `hs.spaces` quirks and pitfalls, see [dev-docs/hammerspoon-and-spaces-quirks.md](dev-docs/hammerspoon-and-spaces-quirks.md).
 
 ## Requirements
 
@@ -129,7 +143,7 @@ This module has been tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1
 `hs.spaces` relies on private macOS APIs that Apple does not document or guarantee. These APIs can and do change between point releases. If you're running a different macOS version:
 
 - **macOS 15.x (other than 15.5):** May work, may not. The module will load but warn you that your version is untested.
-- **macOS 14 and earlier:** The module will refuse to enable and log an error. The `hs.spaces` APIs behave differently on older macOS versions.
+- **macOS 14 and earlier:** The module will refuse to enable and log an error. We assume the `hs.spaces` APIs behave differently on older macOS versions. At any rate, it is untested.
 - **macOS 16+:** Unknown. Test with `debug = true` and check the Hammerspoon console.
 
 If you find it works (or breaks) on a different version, please open an issue or PR.

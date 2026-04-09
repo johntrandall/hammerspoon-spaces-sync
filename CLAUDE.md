@@ -1,10 +1,10 @@
-# hammerspoon-macos-spaces-sync
+# macos-spaces-multimonitor-sync-hammerspoon
 
 Hammerspoon module that synchronizes macOS Spaces across monitors in configurable sync groups.
 
 ## Before You Start
 
-**Read `dev-docs/hammerspoon-quirks.md` first.** It documents critical `hs.spaces` behaviors (async gotoSpace, dropped rapid calls, watcher loops, lazy load timing) that are not obvious from the API docs and caused real bugs during development.
+**Read `dev-docs/hammerspoon-and-spaces-quirks.md` first.** It documents critical `hs.spaces` behaviors (async gotoSpace, dropped rapid calls, watcher loops, lazy load timing) that are not obvious from the API docs and caused real bugs during development.
 
 ## Project Structure
 

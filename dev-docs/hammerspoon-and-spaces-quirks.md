@@ -1,6 +1,6 @@
-# Hammerspoon Quirks and Lessons Learned
+# Hammerspoon and macOS Spaces Quirks
 
-Notes from building spaces-sync on macOS 15.5 (Sequoia) with Hammerspoon 1.0.0+.
+Lessons learned building spaces-sync on macOS 15.5 (Sequoia) with Hammerspoon 1.1.1. Useful for anyone working with `hs.spaces` or multi-monitor Space automation.
 
 ## hs.spaces uses private APIs
 

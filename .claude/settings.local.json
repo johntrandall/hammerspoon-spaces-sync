@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__browser-p1-umbridge-pool-browserless-playwright__browser_fill_form"
+    ]
+  }
+}
