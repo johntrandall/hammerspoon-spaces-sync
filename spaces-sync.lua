@@ -505,8 +505,8 @@ function M.init(userConfig)
 
   -- Check Hammerspoon version
   local hsVer = getHSVersion()
-  if compareVersions(hsVer, TESTED_HS) < 0 then
-    info("WARNING: tested on Hammerspoon " .. TESTED_HS .. ", you have " .. hsVer .. ". Older versions may behave differently.")
+  if compareVersions(hsVer, TESTED_HS) ~= 0 then
+    info("WARNING: tested on Hammerspoon " .. TESTED_HS .. ", you have " .. hsVer .. ". Untested — behavior may differ.")
   end
 
   -- Check macOS Mission Control settings
