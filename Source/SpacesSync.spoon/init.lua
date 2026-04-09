@@ -150,6 +150,7 @@ local state = {
   syncInProgress = false,
   spaceWatcher = nil,
   debounceTimer = nil,
+  pendingSyncTimer = nil,  -- tracks the chained doAfter in syncNext
   osBlocked = false,
 }
 
@@ -397,7 +398,8 @@ local function setupWatcher(self)
       end
 
       syncTarget(self, changedUUID, changedSpaceID, targets[i])
-      hs.timer.doAfter(self.switchDelay, function()
+      state.pendingSyncTimer = hs.timer.doAfter(self.switchDelay, function()
+        state.pendingSyncTimer = nil
         syncNext(i + 1)
       end)
     end
@@ -551,7 +553,12 @@ end
 ---  * The SpacesSync object
 function obj:stop()
   state.enabled = false
+  state.syncInProgress = false
   stopWatcher()
+  if state.pendingSyncTimer then
+    state.pendingSyncTimer:stop()
+    state.pendingSyncTimer = nil
+  end
   if state.debounceTimer then
     state.debounceTimer:stop()
     state.debounceTimer = nil
