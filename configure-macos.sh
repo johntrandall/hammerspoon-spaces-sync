@@ -18,10 +18,10 @@ else
   echo "  ✓ 'Displays have separate Spaces' already ON"
 fi
 
-# Critical: Disable auto-rearrange Spaces
+# Recommended: Disable auto-rearrange Spaces
 current=$(defaults read com.apple.dock mru-spaces 2>/dev/null || echo "missing")
 if [ "$current" != "0" ]; then
-  echo "  [CRITICAL] Disabling 'Automatically rearrange Spaces'..."
+  echo "  [RECOMMENDED] Disabling 'Automatically rearrange Spaces'..."
   defaults write com.apple.dock mru-spaces -bool false
   DOCK_RESTART=1
 else

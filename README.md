@@ -71,11 +71,11 @@ spoon.SpacesSync:bindHotkeys({
 Monitors are assigned position numbers in reading order: left-to-right, then top-to-bottom as tiebreaker. On start, the Spoon logs the map so you can verify:
 
 ```
-[SpacesSync] Screens (4, reading order):
-  pos 1: LG SDQHD (4) (x=0.0, y=25.0)
-  pos 2: LG SDQHD (1) (x=2048.0, y=25.0)
-  pos 3: LG SDQHD (3) (x=4096.0, y=25.0)
-  pos 4: LG SDQHD (2) (x=6144.0, y=25.0)
+SpacesSync: Screens (4, reading order):
+SpacesSync:   pos 1: LG SDQHD (4) [pos 1/4]
+SpacesSync:   pos 2: LG SDQHD (1) [pos 2/4]
+SpacesSync:   pos 3: LG SDQHD (3) [pos 3/4]
+SpacesSync:   pos 4: LG SDQHD (2) [pos 4/4]
 ```
 
 ### Excluding monitors
@@ -156,7 +156,7 @@ For the full analysis of every macOS setting that could affect sync, see [dev-do
 
 Tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1** on a 4-monitor setup (4x LG SDQHD).
 
-> **macOS 26 Tahoe:** Not tested. `hs.spaces` relies on private macOS APIs that Apple changes between major releases. SpacesSync should be assumed **not working on Tahoe** until someone tests and confirms. If you try it, please open an issue with your results.
+> **macOS 16 (Tahoe):** Not tested. `hs.spaces` relies on private macOS APIs that Apple changes between major releases. SpacesSync should be assumed **not working on Tahoe** until someone tests and confirms. If you try it, please open an issue with your results.
 
 `hs.spaces` relies on private macOS APIs that Apple does not document or guarantee. These APIs can and do change between point releases. If you're running a different macOS version:
 
