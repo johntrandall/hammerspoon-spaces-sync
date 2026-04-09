@@ -187,11 +187,11 @@ end
 -- SYNC GROUP LOOKUP
 -- ============================================================================
 
-local function getTargetsFor(self, triggerUUID)
+local function getTargetsFor(triggerUUID)
   local pos = uuidToPosition[triggerUUID]
   if not pos then return nil end
 
-  for _, group in ipairs(self.syncGroups) do
+  for _, group in ipairs(obj.syncGroups) do
     local inGroup = false
     for _, gpos in ipairs(group) do
       if gpos == pos then inGroup = true; break end
@@ -248,7 +248,7 @@ end
 -- SYNC ENGINE
 -- ============================================================================
 
-local function syncTarget(self, triggerUUID, triggerSpaceID, targetUUID)
+local function syncTarget(triggerUUID, triggerSpaceID, targetUUID)
   local label = getDisplayLabel(targetUUID)
   local targetCount = getSpaceCount(targetUUID)
 
@@ -299,7 +299,7 @@ end
 -- WATCHER
 -- ============================================================================
 
-local function setupWatcher(self)
+local function setupWatcher()
   if state.spaceWatcher then
     state.spaceWatcher:stop()
   end
@@ -350,7 +350,7 @@ local function setupWatcher(self)
     end
 
     -- Find targets for the triggering monitor
-    local targets = getTargetsFor(self, changedUUID)
+    local targets = getTargetsFor(changedUUID)
     if not targets or #targets == 0 then
       obj.logger.d("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
       state.lastActiveSpaces = currentSpaces
@@ -379,7 +379,7 @@ local function setupWatcher(self)
         end
 
         if state.debounceTimer then state.debounceTimer:stop() end
-        state.debounceTimer = hs.timer.doAfter(self.debounceSeconds, function()
+        state.debounceTimer = hs.timer.doAfter(obj.debounceSeconds, function()
           state.syncInProgress = false
           state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
           obj.logger.d("Watcher re-enabled")
@@ -387,8 +387,8 @@ local function setupWatcher(self)
         return
       end
 
-      syncTarget(self, changedUUID, changedSpaceID, targets[i])
-      state.pendingSyncTimer = hs.timer.doAfter(self.switchDelay, function()
+      syncTarget(changedUUID, changedSpaceID, targets[i])
+      state.pendingSyncTimer = hs.timer.doAfter(obj.switchDelay, function()
         state.pendingSyncTimer = nil
         syncNext(i + 1)
       end)
@@ -492,7 +492,7 @@ function obj:start()
   require("hs.application"); _ = hs.application.frontmostApplication
   require("hs.timer");       _ = hs.timer.secondsSinceEpoch
 
-  obj.logger.i("Starting (SpacesSync " .. self.version .. ")")
+  obj.logger.i("Starting (SpacesSync " .. obj.version .. ")")
 
   checkEnvironment()
 
@@ -514,7 +514,7 @@ function obj:start()
   end
 
   -- Log sync groups
-  for gi, group in ipairs(self.syncGroups) do
+  for gi, group in ipairs(obj.syncGroups) do
     local members = {}
     for _, pos in ipairs(group) do
       local uuid = positionToUUID[pos]
@@ -530,7 +530,7 @@ function obj:start()
   -- Log independent monitors
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
-    if uuid and not getTargetsFor(self, uuid) then
+    if uuid and not getTargetsFor(uuid) then
       obj.logger.i("Independent: pos " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
     end
   end
@@ -538,7 +538,7 @@ function obj:start()
   state.enabled = true
   state.syncInProgress = false
   state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
-  setupWatcher(self)
+  setupWatcher()
   hs.alert.show("SpacesSync: ON")
   obj.logger.i("Enabled")
 
