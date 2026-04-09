@@ -52,13 +52,14 @@ spacesSync.init({
 
 ### Options
 
-| Option | Default | Description |
-|---|---|---|
-| `syncGroups` | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers. |
-| `hotkey` | `{ {"ctrl","alt","cmd"}, "Y" }` | Hotkey to toggle sync. Set to `false` to disable. |
-| `switchDelay` | `0.3` | Seconds between each `gotoSpace` call. |
-| `debounceSeconds` | `0.8` | Seconds after sync before watcher re-enables. |
-| `debug` | `false` | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
+| Option            | Default                         | Description                                                                                                  |
+| ----------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `syncGroups`      | `{ {1, 2} }`                    | List of sync groups. Each group is a list of monitor position numbers.                                       |
+| `hotkey`          | `{ {"ctrl","alt","cmd"}, "Y" }` | Hotkey to toggle sync. Set to `false` to disable.                                                            |
+| `switchDelay`     | `0.3`                           | Seconds between each `gotoSpace` call.                                                                       |
+| `debounceSeconds` | `0.8`                           | Seconds after sync before watcher re-enables.                                                                |
+| `debug`           | `false`                         | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
+|                   |                                 |                                                                                                              |
 
 ### Position numbers
 
@@ -100,9 +101,11 @@ spacesSync.isEnabled()
 ## Requirements
 
 - macOS Sequoia 15.0+ (blocks activation on macOS 14 and earlier)
-- Hammerspoon 1.0.0+
+- Hammerspoon 1.1.1+ (warns on older versions)
 - Accessibility permissions for Hammerspoon
 - Two or more monitors with multiple Spaces configured
+
+No external Spoons or plugins required. Uses only built-in Hammerspoon extensions (`hs.screen`, `hs.spaces`, `hs.application`, `hs.timer`).
 
 ## Compatibility
 
@@ -116,39 +119,34 @@ This module has been tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1
 
 If you find it works (or breaks) on a different version, please open an issue or PR.
 
+## Logging
+
+All output goes to the Hammerspoon console (open via the menubar icon or `hs -c`).
+
+- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on init. Enough to see what the module is doing.
+- **Debug mode** (`debug = true`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
+
+You can also tail logs from the terminal:
+
+```bash
+# Live tail
+log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
+
+# Recent history
+/usr/bin/log show --last 5m --predicate 'process == "Hammerspoon"' | grep SpacesSync
+```
+
 ## For AI agents
 
 If you're an AI agent working on this codebase, read `CLAUDE.md` first — it points to `dev-docs/hammerspoon-quirks.md` which documents critical `hs.spaces` behaviors.
 
-### Reading the Hammerspoon console
-
 The `hs` CLI provides access to the Hammerspoon runtime from the terminal:
 
 ```bash
-# Reload config
 hs -c 'hs.reload()'
-
-# Check if module loaded
 hs -c 'local ss = require("spaces-sync"); return "enabled=" .. tostring(ss.isEnabled())'
-
-# Run arbitrary Lua in the Hammerspoon runtime
 hs -c 'return hs.host.operatingSystemVersion()'
 ```
-
-To read logs, use the macOS unified log:
-
-```bash
-# Tail SpacesSync logs live
-log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
-
-# Show recent logs
-/usr/bin/log show --last 5m --predicate 'process == "Hammerspoon"' | grep SpacesSync
-```
-
-### Logging levels
-
-- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on init. Enough to see what the module is doing.
-- **Debug mode** (`debug = true`): adds watcher state dumps on every fire, per-call dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
 
 ## Contributing
 

@@ -1,6 +1,9 @@
 -- Copy this file to .spaces-sync-config.lua and edit to taste.
 -- The dot-prefixed file is gitignored, so your personal config won't
 -- be committed. Delete or empty it to use defaults.
+--
+-- Any values set here override the built-in defaults in spaces-sync.lua.
+-- You only need to include the settings you want to change.
 
 return {
   -- Sync groups: each is a list of monitor position numbers.

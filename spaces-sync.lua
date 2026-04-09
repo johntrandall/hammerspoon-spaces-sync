@@ -63,7 +63,7 @@ local function compareVersions(a, b)
 end
 
 -- ============================================================================
--- DEFAULTS
+-- DEFAULTS (overridden by .spaces-sync-config.lua or init() argument)
 -- ============================================================================
 
 local DEFAULTS = {
@@ -182,8 +182,9 @@ end
 -- SYNC GROUP LOOKUP
 -- ============================================================================
 
-local function getPartnersFor(uuid)
-  local pos = uuidToPosition[uuid]
+-- Given a triggering monitor's UUID, return the UUIDs of its targets in the same sync group.
+local function getTargetsFor(triggerUUID)
+  local pos = uuidToPosition[triggerUUID]
   if not pos then return nil end
 
   for _, group in ipairs(config.syncGroups) do
@@ -192,18 +193,18 @@ local function getPartnersFor(uuid)
       if gpos == pos then inGroup = true; break end
     end
     if inGroup then
-      local partners = {}
+      local targets = {}
       for _, gpos in ipairs(group) do
         if gpos ~= pos then
-          local partnerUUID = positionToUUID[gpos]
-          if partnerUUID then
-            table.insert(partners, partnerUUID)
+          local targetUUID = positionToUUID[gpos]
+          if targetUUID then
+            table.insert(targets, targetUUID)
           else
             info("WARNING: group references pos " .. gpos .. " but only " .. totalScreens .. " screens connected")
           end
         end
       end
-      return partners
+      return targets
     end
   end
   return nil
@@ -243,22 +244,23 @@ end
 -- SYNC ENGINE
 -- ============================================================================
 
-local function syncDisplayToTarget(sourceUUID, sourceSpaceID, targetUUID)
+-- Switch a target monitor to match the triggering monitor's space index.
+local function syncTarget(triggerUUID, triggerSpaceID, targetUUID)
   local label = getDisplayLabel(targetUUID)
   local targetCount = getSpaceCount(targetUUID)
 
-  local sourceIndex = getSpaceIndex(sourceUUID, sourceSpaceID)
-  if not sourceIndex then
-    dbg("  " .. label .. ": SKIP (source space index not found)")
+  local triggerIndex = getSpaceIndex(triggerUUID, triggerSpaceID)
+  if not triggerIndex then
+    dbg("  " .. label .. ": SKIP (triggering monitor's space index not found)")
     return
   end
 
-  if sourceIndex > targetCount then
-    info("  " .. label .. " (" .. targetCount .. " spaces): SKIP (no space at index " .. sourceIndex .. ")")
+  if triggerIndex > targetCount then
+    info("  " .. label .. " (" .. targetCount .. " spaces): SKIP (no space at index " .. triggerIndex .. ")")
     return
   end
 
-  local targetSpaceID = getSpaceAtIndex(targetUUID, sourceIndex)
+  local targetSpaceID = getSpaceAtIndex(targetUUID, triggerIndex)
   if not targetSpaceID then
     dbg("  " .. label .. ": SKIP (getSpaceAtIndex returned nil)")
     return
@@ -273,11 +275,11 @@ local function syncDisplayToTarget(sourceUUID, sourceSpaceID, targetUUID)
   local currentSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
   local currentIdx = getSpaceIndex(targetUUID, currentSpace) or "?"
   if currentSpace == targetSpaceID then
-    dbg("  " .. label .. ": already at index " .. sourceIndex)
+    dbg("  " .. label .. ": already at index " .. triggerIndex)
     return
   end
 
-  info("  " .. label .. ": index " .. tostring(currentIdx) .. " -> " .. sourceIndex)
+  info("  " .. label .. ": index " .. tostring(currentIdx) .. " -> " .. triggerIndex)
 
   local ok, err = pcall(function()
     hs.spaces.gotoSpace(targetSpaceID)
@@ -344,24 +346,24 @@ local function setupWatcher()
       return
     end
 
-    -- Find sync partners
-    local partners = getPartnersFor(changedUUID)
-    if not partners or #partners == 0 then
+    -- Find targets for the triggering monitor
+    local targets = getTargetsFor(changedUUID)
+    if not targets or #targets == 0 then
       dbg("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
       state.lastActiveSpaces = currentSpaces
       return
     end
 
-    local names = {}
-    for _, uuid in ipairs(partners) do
-      table.insert(names, getDisplayLabel(uuid))
+    local targetNames = {}
+    for _, uuid in ipairs(targets) do
+      table.insert(targetNames, getDisplayLabel(uuid))
     end
-    info("SYNC: " .. getDisplayLabel(changedUUID) .. " -> index " .. tostring(newIndex) .. " | partners: " .. table.concat(names, ", "))
+    info("SYNC: " .. getDisplayLabel(changedUUID) .. " (trigger) -> index " .. tostring(newIndex) .. " | targets: " .. table.concat(targetNames, ", "))
 
     state.syncInProgress = true
 
     local function syncNext(i)
-      if i > #partners then
+      if i > #targets then
         state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
         if config.debug then
@@ -382,7 +384,7 @@ local function setupWatcher()
         return
       end
 
-      syncDisplayToTarget(changedUUID, changedSpaceID, partners[i])
+      syncTarget(changedUUID, changedSpaceID, targets[i])
       hs.timer.doAfter(config.switchDelay, function()
         syncNext(i + 1)
       end)
@@ -548,7 +550,7 @@ function M.init(userConfig)
   -- Log independent monitors
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
-    if uuid and not getPartnersFor(uuid) then
+    if uuid and not getTargetsFor(uuid) then
       info("Independent: pos " .. pos .. " (" .. hs.screen.find(uuid):name() .. ")")
     end
   end
