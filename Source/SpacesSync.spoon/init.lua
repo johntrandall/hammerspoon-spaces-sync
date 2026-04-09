@@ -487,6 +487,11 @@ end
 --- Returns:
 ---  * The SpacesSync object
 function obj:start()
+  -- Clean up any in-flight state from a previous start()
+  if state.enabled then
+    self:stop()
+  end
+
   obj.logger.i("Starting (SpacesSync " .. self.version .. ")")
 
   checkEnvironment()
