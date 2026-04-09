@@ -1,6 +1,6 @@
 # TODO
 
-## Verify macOS Settings (from dev-docs/macos-spaces-settings.md)
+## Verify macOS Settings (from dev-docs/findings/macos-spaces-settings.md)
 
 Settings marked as logically inferred or suspected need isolated testing — toggle the one setting, observe the effect, update confidence to Verified.
 

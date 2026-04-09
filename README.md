@@ -156,7 +156,7 @@ A setup script is included to check and configure the required and recommended s
 
 The Spoon also checks the required and first recommended setting on start and warns if they're misconfigured.
 
-For the full analysis of every macOS setting that could affect sync, see [dev-docs/macos-spaces-settings.md](dev-docs/macos-spaces-settings.md).
+For the full analysis of every macOS setting that could affect sync, see [dev-docs/findings/macos-spaces-settings.md](dev-docs/findings/macos-spaces-settings.md).
 
 ## Compatibility
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Configure macOS settings for optimal SpacesSync behavior.
-# See dev-docs/macos-spaces-settings.md for details on each setting.
+# See dev-docs/findings/macos-spaces-settings.md for details on each setting.
 set -euo pipefail
 
 DOCK_RESTART=0
