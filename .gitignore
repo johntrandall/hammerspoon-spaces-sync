@@ -1,4 +1,4 @@
 .DS_Store
 .obsidian/
 .spaces-sync-config.lua
-dev-docs/local-settings-audit.md
+dev-docs/local-settings-audit-*.md
