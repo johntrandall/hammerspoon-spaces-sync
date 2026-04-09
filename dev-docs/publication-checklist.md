@@ -62,25 +62,23 @@ Run through this before publishing a new version of SpacesSync.
 
 The Spoon lives in two places: this repo (source of truth) and the
 `johntrandall/Spoons` fork (delivery vehicle for the upstream PR).
+The fork lives at `~/dev/Spoons` per the fix-upstream convention
+(contribution forks go in `~/dev/`, no Forgejo remote per ADR-022).
+
 After pushing changes here, sync them to the fork:
 
 ```bash
-# Clone fork to /tmp (ephemeral — don't keep a permanent copy)
-cd /tmp && gh repo clone johntrandall/Spoons
-cd /tmp/Spoons && git checkout add-spaces-sync-spoon
+cd ~/dev/Spoons
+git checkout add-spaces-sync-spoon
 
 # Copy updated Spoon from this repo
-cp Source/SpacesSync.spoon/init.lua /tmp/Spoons/Source/SpacesSync.spoon/
-cp Source/SpacesSync.spoon/docs.json /tmp/Spoons/Source/SpacesSync.spoon/
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/init.lua Source/SpacesSync.spoon/
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/docs.json Source/SpacesSync.spoon/
 
 # Commit and push
-cd /tmp/Spoons
 git add Source/SpacesSync.spoon/
 git commit -m "Update SpacesSync Spoon — <summary of changes>"
 git push origin add-spaces-sync-spoon
-
-# Clean up
-rm -rf /tmp/Spoons
 ```
 
 The PR at Hammerspoon/Spoons#361 updates automatically when the branch is pushed.
