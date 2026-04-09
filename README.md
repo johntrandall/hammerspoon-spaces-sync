@@ -142,6 +142,10 @@ In **System Settings > Desktop & Dock > Mission Control**:
 | **When switching to an application, switch to a Space with open windows** | OFF | Cmd-Tab/Dock clicks auto-switch Spaces, which SpacesSync interprets as a user switch and syncs all targets. |
 | **Stage Manager** | OFF | Untested interaction with SpacesSync. |
 
+### Optional: Reduce motion
+
+**System Settings > Accessibility > Display > Reduce motion** disables the Spaces sliding animation. This makes `gotoSpace()` complete faster, which can improve sync reliability — especially with 3+ monitors. The tradeoff is that Space transitions become an instant cut instead of a slide.
+
 The Spoon checks the required and first recommended setting on start and warns if they're misconfigured.
 
 A setup script is included to configure everything:
