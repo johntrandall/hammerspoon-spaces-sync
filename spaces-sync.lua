@@ -146,13 +146,8 @@ local function getSpaceAtIndex(displayUUID, index)
   return spaces[index]
 end
 
--- Sync one display to match the space index of another
+-- Sync one display to match the space index of another (caller manages syncInProgress)
 local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDisplayUUID)
-  if M.state.syncInProgress then
-    log("Sync already in progress, skipping")
-    return
-  end
-
   -- Find the index of the source space
   local sourceIndex = getSpaceIndex(sourceDisplayUUID, sourceSpaceID)
   if not sourceIndex then
@@ -180,8 +175,6 @@ local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDispl
     return
   end
 
-  -- Set sync flag and switch
-  M.state.syncInProgress = true
   log("Syncing " .. getDisplayName(targetDisplayUUID) .. " to space index " .. sourceIndex)
 
   local success, err = pcall(function()
@@ -191,15 +184,6 @@ local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDispl
   if not success then
     log("ERROR syncing: " .. tostring(err))
   end
-
-  -- Release sync flag after debounce period
-  if M.state.debounceTimer then
-    M.state.debounceTimer:stop()
-  end
-  M.state.debounceTimer = hs.timer.doAfter(M.config.debounceSeconds, function()
-    M.state.syncInProgress = false
-    log("Sync debounce released")
-  end)
 end
 
 -- ============================================================================
@@ -240,12 +224,24 @@ local function setupWatcher()
         if isInSyncGroup then
           log("This is a synced display, syncing partners...")
 
+          -- Block re-entrant sync while we switch all partners
+          M.state.syncInProgress = true
+
           -- Sync all other synced displays to match this one
           for _, otherUUID in ipairs(syncedUUIDs) do
             if otherUUID ~= displayUUID then
               syncDisplayToTarget(displayUUID, currentSpaceID, otherUUID)
             end
           end
+
+          -- Release sync flag after debounce period
+          if M.state.debounceTimer then
+            M.state.debounceTimer:stop()
+          end
+          M.state.debounceTimer = hs.timer.doAfter(M.config.debounceSeconds, function()
+            M.state.syncInProgress = false
+            log("Sync debounce released")
+          end)
         else
           log("This is an independent display, no sync needed")
         end
