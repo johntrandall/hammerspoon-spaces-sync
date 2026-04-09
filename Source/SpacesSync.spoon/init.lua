@@ -324,7 +324,7 @@ local function setupWatcher(self)
 
     local currentSpaces = hs.spaces.activeSpaces() or {}
 
-    if obj.logger.level >= 5 then -- debug level
+    do
       local parts = {}
       for uuid, spaceID in pairs(currentSpaces) do
         local idx = getSpaceIndex(uuid, spaceID) or "?"
@@ -378,7 +378,7 @@ local function setupWatcher(self)
       if i > #targets then
         state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
-        if obj.logger.level >= 5 then -- debug level
+        do
           local parts = {}
           for uuid, spaceID in pairs(state.lastActiveSpaces) do
             local idx = getSpaceIndex(uuid, spaceID) or "?"
