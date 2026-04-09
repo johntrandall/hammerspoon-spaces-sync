@@ -133,7 +133,22 @@ In **System Settings > Desktop & Dock > Mission Control**:
 | **Displays have separate Spaces** | ON | If off, all monitors share one Space — nothing to sync. Requires logout to change. |
 | **Automatically rearrange Spaces based on most recent use** | OFF | If on, macOS reorders Space indices by recency, breaking index-based sync. |
 
-The Spoon checks these on start and warns if they're misconfigured.
+Also recommended:
+
+| Setting | Recommended | Why |
+|---|---|---|
+| **When switching to an application, switch to a Space with open windows** | OFF | Cmd-Tab/Dock clicks auto-switch Spaces, which SpacesSync interprets as a user switch and syncs all targets. |
+| **Stage Manager** | OFF | Untested interaction with SpacesSync. |
+
+The Spoon checks all four on start and warns if they're misconfigured.
+
+A setup script is included to configure everything:
+
+```bash
+./configure-macos.sh
+```
+
+For the full analysis of every macOS setting that could affect sync, see [dev-docs/macos-spaces-settings.md](dev-docs/macos-spaces-settings.md).
 
 ## Compatibility
 

@@ -443,6 +443,17 @@ local function checkEnvironment(self)
   if mruSpaces == "1" then
     info("WARNING: 'Automatically rearrange Spaces based on most recent use' is ON. This reorders Space indices and will break sync. Disable it in System Settings > Desktop & Dock > Mission Control.")
   end
+
+  -- workspaces-auto-swoosh: absent key = default ON (1)
+  local autoSwoosh = hs.execute("defaults read com.apple.dock workspaces-auto-swoosh 2>/dev/null"):gsub("%s+", "")
+  if autoSwoosh ~= "0" then
+    info("WARNING: 'Switch to Space with open windows for application' is ON (default). Cmd-Tab or Dock clicks may trigger unexpected sync. Consider: defaults write com.apple.dock workspaces-auto-swoosh -bool false && killall Dock")
+  end
+
+  local stageManager = hs.execute("defaults read com.apple.WindowManager GloballyEnabled 2>/dev/null"):gsub("%s+", "")
+  if stageManager == "1" then
+    info("WARNING: Stage Manager is ON. Interaction with SpacesSync is untested and may cause unexpected behavior.")
+  end
 end
 
 -- ============================================================================
