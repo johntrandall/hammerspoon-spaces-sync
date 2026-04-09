@@ -230,12 +230,17 @@ local function setupWatcher()
       if lastSpaceID and lastSpaceID ~= currentSpaceID then
         log("Display " .. getDisplayName(displayUUID) .. " changed space")
 
-        -- Only sync if change is on one of the synced displays
-        if isSyncedDisplay(displayUUID) then
+        -- Only sync if change is on one of the synced displays (filtered list)
+        local syncedUUIDs = getSyncedDisplayUUIDs()
+        local isInSyncGroup = false
+        for _, uuid in ipairs(syncedUUIDs) do
+          if uuid == displayUUID then isInSyncGroup = true; break end
+        end
+
+        if isInSyncGroup then
           log("This is a synced display, syncing partners...")
 
           -- Sync all other synced displays to match this one
-          local syncedUUIDs = getSyncedDisplayUUIDs()
           for _, otherUUID in ipairs(syncedUUIDs) do
             if otherUUID ~= displayUUID then
               syncDisplayToTarget(displayUUID, currentSpaceID, otherUUID)
@@ -324,12 +329,25 @@ function M.init()
   log("Sync patterns: " .. table.concat(M.config.syncedMonitorPatterns, ", "))
   log("Independent patterns: " .. table.concat(M.config.independentMonitorPatterns, ", "))
 
-  -- Show which monitors were detected
+  -- Show which monitors are in the sync group
+  local syncGroupUUIDs = getSyncedDisplayUUIDs()
+  local syncGroupSet = {}
+  for _, uuid in ipairs(syncGroupUUIDs) do syncGroupSet[uuid] = true end
+
+  log("Exclude leftmost: " .. (M.config.excludeLeftmost or 0))
   for _, screen in ipairs(hs.screen.allScreens()) do
     local uuid = screen:getUUID()
     local name = screen:name()
-    local synced = isSyncedDisplay(uuid)
-    log("  " .. name .. " -> " .. (synced and "SYNCED" or "INDEPENDENT"))
+    local f = screen:frame()
+    local label
+    if syncGroupSet[uuid] then
+      label = "SYNCED"
+    elseif isSyncedDisplay(uuid) then
+      label = "EXCLUDED (leftmost)"
+    else
+      label = "INDEPENDENT"
+    end
+    log("  " .. name .. " (x=" .. f.x .. ") -> " .. label)
   end
 end
 
