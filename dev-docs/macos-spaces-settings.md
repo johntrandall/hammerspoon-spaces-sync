@@ -24,7 +24,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` (counterintuitively, `0` = separate spaces ON) |
 | **Effect if wrong** | All monitors share one Space. `hs.spaces.spacesForScreen()` returns the same spaces for every screen. Nothing to sync. |
 | **Change requires** | Logout and login |
-| **Confidence** | **Verified** — module checks this on init and blocks activation if wrong |
+| **Confidence** | **Inferred** — module checks the defaults key on init, but we have not toggled this setting and observed the actual API behavior change |
 
 ### 2. Automatically rearrange Spaces based on most recent use
 
@@ -36,7 +36,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` |
 | **Effect if wrong** | macOS silently reorders Space indices. Space "3" on one monitor might become Space "1" after a few minutes of use. Index-based sync becomes meaningless — you switch to Space 3 on one monitor and the partner switches to what used to be Space 3 but is now a different desktop. |
 | **Change requires** | `killall Dock` (or takes effect on next Dock restart) |
-| **Confidence** | **Verified** — module checks this on init and warns |
+| **Confidence** | **Inferred** — module checks the defaults key on init, but we have not toggled this setting and observed index reordering |
 
 ---
 
@@ -155,6 +155,8 @@ Settings that need isolated testing before marking as Verified:
 
 | # | Setting | Test procedure | Priority |
 |---|---|---|---|
+| 1 | spans-displays | Set to 1 (shared Spaces), logout/login, check what `hs.spaces.spacesForScreen()` returns for each screen | High |
+| 2 | mru-spaces | Set to 1, create 3+ Spaces, use them in different order, check if indices shift | High |
 | 3 | workspaces-auto-swoosh | Enable, Cmd-Tab to an app on a different Space, observe if sync cascades | High |
 | 5 | Fullscreen Spaces | Make an app fullscreen on one synced monitor, switch spaces on another, check if index mapping breaks | High |
 | 8 | Reduce Motion | Enable, test if `switchDelay` can be reduced below 0.3s | Medium |
