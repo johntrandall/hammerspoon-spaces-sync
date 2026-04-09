@@ -325,7 +325,7 @@ local function setupWatcher(self)
 
     local currentSpaces = hs.spaces.activeSpaces() or {}
 
-    do
+    if obj.logger.level >= 4 then -- debug level
       local parts = {}
       for uuid, spaceID in pairs(currentSpaces) do
         local idx = getSpaceIndex(uuid, spaceID) or "?"
@@ -368,8 +368,8 @@ local function setupWatcher(self)
     end
 
     local targetNames = {}
-    for _, uuid in ipairs(targets) do
-      table.insert(targetNames, getDisplayLabel(uuid))
+    for _, targetUUID in ipairs(targets) do
+      table.insert(targetNames, getDisplayLabel(targetUUID))
     end
     obj.logger.i("SYNC: " .. getDisplayLabel(changedUUID) .. " (trigger) -> index " .. tostring(newIndex) .. " | targets: " .. table.concat(targetNames, ", "))
 
@@ -379,7 +379,7 @@ local function setupWatcher(self)
       if i > #targets then
         state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
-        do
+        if obj.logger.level >= 4 then -- debug level
           local parts = {}
           for uuid, spaceID in pairs(state.lastActiveSpaces) do
             local idx = getSpaceIndex(uuid, spaceID) or "?"
@@ -427,14 +427,14 @@ local function checkEnvironment()
   state.osBlocked = false
 
   -- Check macOS version
-  local os = getOSVersion()
-  if os.major < MIN_OS_MAJOR then
-    obj.logger.e("macOS " .. MIN_OS_MAJOR .. "+ required (you have " .. os.str .. "). Space sync will not activate.")
+  local osVer = getOSVersion()
+  if osVer.major < MIN_OS_MAJOR then
+    obj.logger.e("macOS " .. MIN_OS_MAJOR .. "+ required (you have " .. osVer.str .. "). Space sync will not activate.")
     state.osBlocked = true
   else
     local testedStr = TESTED_OS.major .. "." .. TESTED_OS.minor .. "." .. TESTED_OS.patch
-    if os.major ~= TESTED_OS.major or os.minor ~= TESTED_OS.minor or os.patch ~= TESTED_OS.patch then
-      obj.logger.w("Tested on macOS " .. testedStr .. ", you have " .. os.str .. ". hs.spaces uses private APIs — behavior may differ.")
+    if osVer.major ~= TESTED_OS.major or osVer.minor ~= TESTED_OS.minor or osVer.patch ~= TESTED_OS.patch then
+      obj.logger.w("Tested on macOS " .. testedStr .. ", you have " .. osVer.str .. ". hs.spaces uses private APIs — behavior may differ.")
     end
   end
 
@@ -504,9 +504,7 @@ function obj:start()
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid then
-      local screen = hs.screen.find(uuid)
-      local f = screen:frame()
-      obj.logger.i("  pos " .. pos .. ": " .. screen:name() .. " (x=" .. f.x .. ", y=" .. f.y .. ")")
+      obj.logger.i("  pos " .. pos .. ": " .. getDisplayLabel(uuid))
     end
   end
 
@@ -516,7 +514,7 @@ function obj:start()
     for _, pos in ipairs(group) do
       local uuid = positionToUUID[pos]
       if uuid then
-        table.insert(members, "pos " .. pos .. " (" .. hs.screen.find(uuid):name() .. ")")
+        table.insert(members, "pos " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
       else
         table.insert(members, "pos " .. pos .. " (not connected)")
       end
@@ -528,7 +526,7 @@ function obj:start()
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid and not getTargetsFor(self, uuid) then
-      obj.logger.i("Independent: pos " .. pos .. " (" .. hs.screen.find(uuid):name() .. ")")
+      obj.logger.i("Independent: pos " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
     end
   end
 
