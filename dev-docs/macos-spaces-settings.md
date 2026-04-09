@@ -12,7 +12,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 
 ---
 
-## Critical Settings (will break sync if wrong)
+## Required Settings (sync will not work without these)
 
 ### 1. Displays have separate Spaces
 
@@ -26,28 +26,28 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Change requires** | Logout and login |
 | **Confidence** | **Verified** — sync does not work without this setting enabled |
 
+---
+
+## Recommended Settings (sync works but behavior may be surprising)
+
 ### 2. Automatically rearrange Spaces based on most recent use
 
 | | |
 |---|---|
 | **Location** | System Settings > Desktop & Dock > Mission Control |
-| **Required** | OFF |
+| **Recommended** | OFF |
 | **Key** | `defaults read com.apple.dock mru-spaces` |
-| **Required value** | `0` |
-| **Effect if wrong** | macOS silently reorders Space indices. Space "3" on one monitor might become Space "1" after a few minutes of use. Index-based sync becomes meaningless — you switch to Space 3 on one monitor and the partner switches to what used to be Space 3 but is now a different desktop. |
+| **Recommended value** | `0` |
+| **Effect if wrong** | macOS silently reorders Space indices. Space "3" on one monitor might become Space "1" after a few minutes of use. Index-based sync becomes meaningless — you switch to Space 3 on one monitor and the target switches to what used to be Space 3 but is now a different desktop. |
 | **Change requires** | `killall Dock` (or takes effect on next Dock restart) |
 | **Confidence** | **Logically inferred** — module checks the defaults key on init, but we have not toggled this ON and observed index reordering |
-
----
-
-## High-Risk Settings (likely to cause problems)
 
 ### 3. When switching to an application, switch to a Space with open windows for the application
 
 | | |
 |---|---|
 | **Location** | System Settings > Desktop & Dock > Mission Control |
-| **Required** | OFF (recommended) |
+| **Recommended** | OFF |
 | **Key** | `defaults read com.apple.dock workspaces-auto-swoosh` |
 | **Required value** | `0` (default is `1` / enabled when key is absent) |
 | **Effect if wrong** | Clicking an app in the Dock or Cmd-Tabbing to it causes macOS to switch Spaces automatically. This fires the `hs.spaces.watcher` and SpacesSync interprets it as a user-initiated space switch, syncing all targets to that index. Could cause unexpected cascading switches when you just wanted to focus an app. |
@@ -59,12 +59,16 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | | |
 |---|---|
 | **Location** | System Settings > Desktop & Dock > Stage Manager |
-| **Required** | OFF |
+| **Recommended** | OFF |
 | **Key** | `defaults read com.apple.WindowManager GloballyEnabled` |
 | **Required value** | `0` |
 | **Effect if wrong** | Stage Manager changes how windows are organized within Spaces. It may alter which Space is "active" and how `hs.spaces.activeSpaceOnScreen()` reports state. Interaction with multi-monitor sync is unknown. |
 | **Change requires** | Immediate |
 | **Confidence** | **Suspected** — Stage Manager is a fundamentally different window management paradigm; no documentation or testing on interaction with hs.spaces |
+
+---
+
+## Informational Settings (no effect or needs investigation)
 
 ### 5. Fullscreen apps creating separate Spaces
 
@@ -89,10 +93,6 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Effect if wrong** | Apps assigned to "All Desktops" appear on every Space. This shouldn't affect sync directly (Space indices don't change), but it means these apps' windows may appear to "follow" you across synced switches, which could be confusing or desirable depending on intent. |
 | **Change requires** | Immediate |
 | **Confidence** | **Verified** — apps assigned to All Desktops do not affect Space indices; sync works normally with them present |
-
----
-
-## Medium-Risk Settings (may cause subtle issues)
 
 ### 7. Group windows by application (Mission Control)
 
@@ -126,10 +126,6 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | Key should not exist (or be `0`) |
 | **Effect if wrong** | Disables Mission Control entirely. Spaces stop working. `hs.spaces` APIs would likely fail or return empty results. |
 | **Confidence** | **Logically inferred** — documented behavior, not tested |
-
----
-
-## Low-Risk Settings (unlikely to affect sync)
 
 ### 10. Expose animation duration
 
@@ -166,76 +162,7 @@ Settings that need isolated testing before marking as Verified:
 
 ---
 
-## Recommended Settings Script
+## Setup Script
 
-The following script configures macOS for optimal SpacesSync behavior. It sets the two critical settings and the one high-risk recommended setting. All others are left at their defaults.
+See `configure-macos.sh` in the repo root. It sets the required and recommended settings.
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-echo "Configuring macOS for SpacesSync..."
-
-# Critical: Displays have separate Spaces (requires logout)
-current=$(defaults read com.apple.spaces spans-displays 2>/dev/null || echo "missing")
-if [ "$current" != "0" ]; then
-  echo "  Setting 'Displays have separate Spaces' to ON..."
-  defaults write com.apple.spaces spans-displays -bool false
-  echo "  ⚠️  LOGOUT REQUIRED for this to take effect."
-else
-  echo "  ✓ 'Displays have separate Spaces' already ON"
-fi
-
-# Critical: Disable auto-rearrange Spaces
-current=$(defaults read com.apple.dock mru-spaces 2>/dev/null || echo "missing")
-if [ "$current" != "0" ]; then
-  echo "  Disabling 'Automatically rearrange Spaces'..."
-  defaults write com.apple.dock mru-spaces -bool false
-  DOCK_RESTART=1
-else
-  echo "  ✓ 'Automatically rearrange Spaces' already OFF"
-fi
-
-# Recommended: Disable auto-switch to app's Space
-current=$(defaults read com.apple.dock workspaces-auto-swoosh 2>/dev/null || echo "missing")
-if [ "$current" != "0" ]; then
-  echo "  Disabling 'Switch to Space with open windows'..."
-  defaults write com.apple.dock workspaces-auto-swoosh -bool false
-  DOCK_RESTART=1
-else
-  echo "  ✓ 'Switch to Space with open windows' already OFF"
-fi
-
-# Recommended: Disable Stage Manager
-current=$(defaults read com.apple.WindowManager GloballyEnabled 2>/dev/null || echo "missing")
-if [ "$current" != "0" ]; then
-  echo "  Disabling Stage Manager..."
-  defaults write com.apple.WindowManager GloballyEnabled -bool false
-else
-  echo "  ✓ Stage Manager already OFF"
-fi
-
-# Restart Dock if needed
-if [ "${DOCK_RESTART:-0}" = "1" ]; then
-  echo "  Restarting Dock..."
-  killall Dock
-fi
-
-echo ""
-echo "Done. If 'Displays have separate Spaces' was changed, log out and back in."
-```
-
----
-
-## Your Current Settings (ChoChang, 2026-04-09)
-
-| Setting | Current value | Status |
-|---|---|---|
-| Displays have separate Spaces | ON (`spans-displays=0`) | ✅ Correct |
-| Auto-rearrange Spaces | OFF (`mru-spaces=0`) | ✅ Correct |
-| Switch to app's Space | ON (key absent = default ON) | ⚠️ Recommended: OFF |
-| Stage Manager | OFF (`GloballyEnabled=0`) | ✅ Correct |
-| Group windows by app | OFF (`expose-group-apps=0`) | ✅ No effect |
-| Reduce Motion | OFF (`reduceMotion=0`) | ℹ️ Could test with ON |
-| Mission Control disabled | No (key absent) | ✅ Correct |
-| All Desktops apps | 11 apps bound | ℹ️ Monitor for issues |

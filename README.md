@@ -128,15 +128,15 @@ No external Spoons or plugins required. Uses only built-in Hammerspoon extension
 
 In **System Settings > Desktop & Dock > Mission Control**:
 
-| Setting | Required | Why |
+| Setting | Value | Why |
 |---|---|---|
-| **Displays have separate Spaces** | ON | If off, all monitors share one Space — nothing to sync. Requires logout to change. |
+| **Displays have separate Spaces** | **ON** (required) | If off, all monitors share one Space — nothing to sync. Requires logout to change. |
+
+### Recommended macOS settings
+
+| Setting | Value | Why |
+|---|---|---|
 | **Automatically rearrange Spaces based on most recent use** | OFF | If on, macOS reorders Space indices by recency, breaking index-based sync. |
-
-Also recommended:
-
-| Setting | Recommended | Why |
-|---|---|---|
 | **When switching to an application, switch to a Space with open windows** | OFF | Cmd-Tab/Dock clicks auto-switch Spaces, which SpacesSync interprets as a user switch and syncs all targets. |
 | **Stage Manager** | OFF | Untested interaction with SpacesSync. |
 
@@ -154,11 +154,13 @@ For the full analysis of every macOS setting that could affect sync, see [dev-do
 
 Tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1** on a 4-monitor setup (4x LG SDQHD).
 
+> **macOS 26 Tahoe:** Not tested. `hs.spaces` relies on private macOS APIs that Apple changes between major releases. SpacesSync should be assumed **not working on Tahoe** until someone tests and confirms. If you try it, please open an issue with your results.
+
 `hs.spaces` relies on private macOS APIs that Apple does not document or guarantee. These APIs can and do change between point releases. If you're running a different macOS version:
 
 - **macOS 15.x (other than 15.5):** May work, may not. The Spoon will load but warn you that your version is untested.
-- **macOS 14 and earlier:** The Spoon will refuse to enable and log an error. The `hs.spaces` APIs behave differently on older macOS versions.
-- **macOS 16+:** Unknown. Test with `debug = true` and check the Hammerspoon console.
+- **macOS 14 and earlier:** The Spoon will refuse to enable and log an error.
+- **macOS 16 (Tahoe) and later:** Assumed not working until tested. The private APIs this depends on are likely to change.
 
 If you find it works (or breaks) on a different version, please open an issue or PR.
 

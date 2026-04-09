@@ -22,6 +22,10 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 - [ ] **#9 Mission Control disabled** (logically inferred) — Set `mcx-expose-disabled` to true, verify the Spoon blocks gracefully on start.
 - [ ] **#10 Expose animation duration** (suspected) — Set a custom animation duration, verify `gotoSpace()` timing is unaffected.
 
+## Compatibility Testing
+
+- [ ] **macOS 26 Tahoe** — test basic sync behavior once Tahoe ships. hs.spaces uses private APIs that are likely to change. Assume broken until tested.
+
 ## Features
 
 - [ ] Publish to GitHub
