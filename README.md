@@ -22,7 +22,7 @@ This symlinks `Source/SpacesSync.spoon` into `~/.hammerspoon/Spoons/`.
 
 ### Manual
 
-Download `SpacesSync.spoon.zip`, unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
+Download [`SpacesSync.spoon.zip`](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest/download/SpacesSync.spoon.zip) from the [latest release](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest), unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
 
 ### Add to `~/.hammerspoon/init.lua`
 

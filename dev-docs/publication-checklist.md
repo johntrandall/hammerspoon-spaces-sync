@@ -55,8 +55,29 @@ Run through this before publishing a new version of SpacesSync.
 
 - [ ] Commit all changes to this repo
 - [ ] Push to GitHub (`origin`) and Forgejo (`umbridge`)
+- [ ] Create a GitHub release with `SpacesSync.spoon.zip` (see procedure below)
 - [ ] Update the Hammerspoon/Spoons PR (see procedure below)
 - [ ] Update README note if PR status changes (merged, closed, etc.)
+
+## Creating a GitHub release
+
+```bash
+# Build the zip
+cd /tmp
+mkdir -p SpacesSync.spoon
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/init.lua SpacesSync.spoon/
+cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/docs.json SpacesSync.spoon/
+zip -r SpacesSync.spoon.zip SpacesSync.spoon/
+
+# Create the release (bump version tag as needed)
+gh release create v1.x /tmp/SpacesSync.spoon.zip \
+  --repo johntrandall/hammerspoon-spaces-sync \
+  --title "SpacesSync v1.x" \
+  --notes "Release notes here"
+
+# Clean up
+rm -rf /tmp/SpacesSync.spoon /tmp/SpacesSync.spoon.zip
+```
 
 ## Updating the Hammerspoon/Spoons PR
 
