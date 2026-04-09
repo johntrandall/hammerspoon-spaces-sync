@@ -1,5 +1,7 @@
 # Spaces Sync
 
+![Spaces Sync](spaces-sync-hero.png)
+
 A [Hammerspoon](https://www.hammerspoon.org/) module (Lua) that keeps macOS Spaces synchronized across monitors. When you switch Spaces on one monitor, the others in its sync group follow in lockstep.
 
 Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool scripted in Lua.
