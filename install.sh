@@ -15,5 +15,9 @@ else
 fi
 
 echo ""
-echo "Usage: Toggle with Ctrl+Alt+Cmd+Y in Hammerspoon"
-echo "Also available in the ⚡ automations menu → 'Sync LG Monitors Toggle'"
+echo "Add to ~/.hammerspoon/init.lua:"
+echo '  local spacesSync = require("spaces-sync")'
+echo '  spacesSync.init()'
+echo ""
+echo "Optional: cp spaces-sync-config.example.lua .spaces-sync-config.lua"
+echo "Toggle with Ctrl+Alt+Cmd+Y (default hotkey)"
