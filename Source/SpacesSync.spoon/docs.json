@@ -11,10 +11,9 @@
     ],
     "Variable" : [
       {
-        "doc" : "Logger object used within the Spoon. Can be accessed to set the default\nlog level for the messages coming from the Spoon.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
+        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "stripped_doc" : [
-          "Logger object used within the Spoon. Can be accessed to set the default",
-          "log level for the messages coming from the Spoon.",
+          "Logger object used within the Spoon. Set the log level to control verbosity.",
           "",
           "Default log level: `info`. Set to `debug` for verbose watcher state dumps",
           "and per-target dispatch details. Set to `warning` to suppress routine sync",
@@ -26,7 +25,7 @@
           "```"
         ],
         "def" : "SpacesSync.logger",
-        "desc" : "Logger object used within the Spoon. Can be accessed to set the default",
+        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity.",
         "notes" : [
 
         ],
@@ -358,10 +357,9 @@
         ]
       },
       {
-        "doc" : "Logger object used within the Spoon. Can be accessed to set the default\nlog level for the messages coming from the Spoon.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
+        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "stripped_doc" : [
-          "Logger object used within the Spoon. Can be accessed to set the default",
-          "log level for the messages coming from the Spoon.",
+          "Logger object used within the Spoon. Set the log level to control verbosity.",
           "",
           "Default log level: `info`. Set to `debug` for verbose watcher state dumps",
           "and per-target dispatch details. Set to `warning` to suppress routine sync",
@@ -373,7 +371,7 @@
           "```"
         ],
         "def" : "SpacesSync.logger",
-        "desc" : "Logger object used within the Spoon. Can be accessed to set the default",
+        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity.",
         "notes" : [
 
         ],

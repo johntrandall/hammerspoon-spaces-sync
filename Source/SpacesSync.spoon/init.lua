@@ -27,19 +27,9 @@ obj.author = "John Randall <john@johnrandall.com>"
 obj.homepage = "https://github.com/johntrandall/hammerspoon-spaces-sync"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
--- Preload extensions to avoid lazy-load latency during sync.
--- require() alone returns Hammerspoon's lazy proxy without loading the
--- Objective-C bridge. Touching one function on each module forces the
--- actual load so it doesn't happen mid-sync.
-require("hs.screen");      local _ = hs.screen.allScreens
-require("hs.spaces");      _ = hs.spaces.activeSpaces
-require("hs.application"); _ = hs.application.frontmostApplication
-require("hs.timer");       _ = hs.timer.secondsSinceEpoch
-
 --- SpacesSync.logger
 --- Variable
---- Logger object used within the Spoon. Can be accessed to set the default
---- log level for the messages coming from the Spoon.
+--- Logger object used within the Spoon. Set the log level to control verbosity.
 ---
 --- Default log level: `info`. Set to `debug` for verbose watcher state dumps
 --- and per-target dispatch details. Set to `warning` to suppress routine sync
@@ -492,6 +482,16 @@ function obj:start()
     self:stop()
   end
 
+  -- Preload extensions to avoid lazy-load latency during sync.
+  -- require() alone returns Hammerspoon's lazy proxy without loading the
+  -- Objective-C bridge. Touching one function on each module forces the
+  -- actual load so it doesn't happen mid-sync.
+  require("hs.screen");      local _ = hs.screen.allScreens
+  require("hs.spaces");      _ = hs.spaces.activeSpaces
+  -- hs.application is loaded as a transitive dependency of hs.spaces.gotoSpace()
+  require("hs.application"); _ = hs.application.frontmostApplication
+  require("hs.timer");       _ = hs.timer.secondsSinceEpoch
+
   obj.logger.i("Starting (SpacesSync " .. self.version .. ")")
 
   checkEnvironment()
@@ -618,7 +618,7 @@ end
 ---    `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`
 function obj:bindHotkeys(mapping)
   local def = {
-    toggle = hs.fnutils.partial(self.toggle, self),
+    toggle = function() self:toggle() end,
   }
   hs.spoons.bindHotkeysToSpec(def, mapping)
   return self
