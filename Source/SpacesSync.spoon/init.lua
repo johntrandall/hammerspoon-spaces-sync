@@ -24,7 +24,7 @@ obj.__index = obj
 obj.name = "SpacesSync"
 obj.version = "1.0"
 obj.author = "John Randall <john@johnrandall.com>"
-obj.homepage = "https://github.com/johnrandall/hammerspoon-spaces-sync"
+obj.homepage = "https://github.com/johntrandall/hammerspoon-spaces-sync"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 -- Preload extensions to avoid lazy-load latency during sync.
