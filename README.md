@@ -71,6 +71,6 @@ If the source monitor switches to space index 5 but a partner only has 3 spaces,
 
 ## Requirements
 
-- macOS Sequoia 15+
+- macOS Sequoia 15+ (tested on 15.5; YMMV on other 15.x releases — `hs.spaces` uses private APIs that can break between point releases)
 - Hammerspoon 1.0.0+
 - Accessibility permissions for Hammerspoon
