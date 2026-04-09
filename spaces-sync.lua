@@ -1,11 +1,11 @@
 -- Synchronized Spaces Module
--- Keeps two large LG monitors in sync, Geminos-T independent
+-- Keeps matched monitors in sync — switching spaces on one syncs the others
 --
 -- Usage: Toggle with Ctrl+Alt+Cmd+Y
 --
--- When enabled, switching spaces on either LG monitor will
--- automatically switch the other LG to the matching space index.
--- The Geminos-T monitor is never affected.
+-- When enabled, switching spaces on any synced monitor will
+-- automatically switch all other synced monitors to the matching space index.
+-- Independent monitors and excluded monitors are never affected.
 
 local M = {}
 
@@ -21,6 +21,10 @@ M.config = {
   -- Monitor names to keep independent (partial match, case-insensitive)
   -- Any monitor whose name contains one of these strings will NOT be synced
   independentMonitorPatterns = { "Geminos" },
+
+  -- Number of leftmost synced monitors to exclude (0 = sync all matched)
+  -- e.g., 1 = exclude the leftmost LG, sync the right three
+  excludeLeftmost = 1,
 
   -- Debounce delay to prevent sync loops (seconds)
   debounceSeconds = 0.8,
@@ -82,13 +86,29 @@ local function isSyncedDisplay(uuid)
   return nameMatchesPatterns(name, M.config.syncedMonitorPatterns)
 end
 
--- Get all currently synced display UUIDs
+-- Get all currently synced display UUIDs (respects excludeLeftmost)
 local function getSyncedDisplayUUIDs()
-  local uuids = {}
+  -- Collect all pattern-matched screens with their x-position
+  local candidates = {}
   for _, screen in ipairs(hs.screen.allScreens()) do
     local uuid = screen:getUUID()
     if isSyncedDisplay(uuid) then
-      table.insert(uuids, uuid)
+      local f = screen:frame()
+      table.insert(candidates, { uuid = uuid, x = f.x })
+    end
+  end
+
+  -- Sort by x-position (left to right)
+  table.sort(candidates, function(a, b) return a.x < b.x end)
+
+  -- Exclude the leftmost N
+  local skip = M.config.excludeLeftmost or 0
+  local uuids = {}
+  for i, entry in ipairs(candidates) do
+    if i > skip then
+      table.insert(uuids, entry.uuid)
+    else
+      log("Excluding leftmost: " .. getDisplayName(entry.uuid) .. " (x=" .. entry.x .. ")")
     end
   end
   return uuids
