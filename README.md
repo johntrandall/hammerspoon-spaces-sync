@@ -1,73 +1,72 @@
-# Spaces Sync
+# SpacesSync
 
-![Spaces Sync](spaces-sync-hero.png)
+![SpacesSync](spaces-sync-hero.png)
 
-A [Hammerspoon](https://www.hammerspoon.org/) module (Lua) that keeps macOS Spaces synchronized across monitors. When you switch Spaces on one monitor, the others in its sync group follow in lockstep.
+A [Hammerspoon](https://www.hammerspoon.org/) Spoon that keeps macOS Spaces synchronized across monitors. When you switch Spaces on one monitor, the others in its sync group follow in lockstep.
 
 Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool scripted in Lua.
 
 ## Install
 
+### From source
+
 ```bash
-git clone https://github.com/youruser/hammerspoon-macos-spaces-sync.git
-cd hammerspoon-macos-spaces-sync
+git clone https://github.com/johnrandall/hammerspoon-spaces-sync.git
+cd hammerspoon-spaces-sync
 ./install.sh
 ```
 
-This symlinks `spaces-sync.lua` into `~/.hammerspoon/`.
+This symlinks `Source/SpacesSync.spoon` into `~/.hammerspoon/Spoons/`.
 
-Then add to `~/.hammerspoon/init.lua`:
+### Manual
+
+Download `SpacesSync.spoon.zip`, unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
+
+### Then add to `~/.hammerspoon/init.lua`
 
 ```lua
-local spacesSync = require("spaces-sync")
-spacesSync.init()
+hs.loadSpoon("SpacesSync")
+spoon.SpacesSync.syncGroups = { {1, 2} }
+spoon.SpacesSync:bindHotkeys({ toggle = {{"ctrl", "alt", "cmd"}, "Y"} })
+spoon.SpacesSync:start()
 ```
 
 ## Configuration
 
-Copy the example config:
-
-```bash
-cp spaces-sync-config.example.lua .spaces-sync-config.lua
-```
-
-Edit the `.spaces-sync-config.lua` to match your setup:
+Set properties on `spoon.SpacesSync` before calling `:start()`:
 
 ```lua
-return {
-  syncGroups = {
-    { 1, 2 },           -- monitors 1 and 2 sync together
-    -- { 3, 4 },         -- a second independent pair
-  },
-  debug = true,          -- log to Hammerspoon console
+hs.loadSpoon("SpacesSync")
+
+spoon.SpacesSync.syncGroups = {
+  { 2, 3, 4 },    -- right three monitors sync together
 }
-```
+spoon.SpacesSync.debug = true
 
-If the config file is missing or empty, built-in defaults are used.
-
-You can also pass config directly:
-
-```lua
-spacesSync.init({
-  syncGroups = { {1, 2, 3} },
-  debug = true,
-})
+spoon.SpacesSync:bindHotkeys({ toggle = {{"ctrl", "alt", "cmd"}, "Y"} })
+spoon.SpacesSync:start()
 ```
 
 ### Options
 
-| Option            | Default                         | Description                                                                                                  |
-| ----------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `syncGroups`      | `{ {1, 2} }`                    | List of sync groups. Each group is a list of monitor position numbers.                                       |
-| `hotkey`          | `{ {"ctrl","alt","cmd"}, "Y" }` | Hotkey to toggle sync. Set to `false` to disable.                                                            |
-| `switchDelay`     | `0.3`                           | Seconds between each `gotoSpace` call.                                                                       |
-| `debounceSeconds` | `0.8`                           | Seconds after sync before watcher re-enables.                                                                |
-| `debug`           | `false`                         | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
-|                   |                                 |                                                                                                              |
+| Property          | Default      | Description                                                                                                  |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `syncGroups`      | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers.                                       |
+| `switchDelay`     | `0.3`        | Seconds between each `gotoSpace` call.                                                                       |
+| `debounceSeconds` | `0.8`        | Seconds after sync before watcher re-enables.                                                                |
+| `debug`           | `false`      | Verbose logging (watcher state dumps, per-call details). Normal mode still logs syncs, warnings, and errors. |
+
+Hotkeys are configured via `:bindHotkeys()`:
+
+```lua
+spoon.SpacesSync:bindHotkeys({
+  toggle = {{"ctrl", "alt", "cmd"}, "Y"},
+})
+```
 
 ### Position numbers
 
-Monitors are assigned position numbers in reading order: left-to-right, then top-to-bottom as tiebreaker. On init, the module logs the map so you can verify:
+Monitors are assigned position numbers in reading order: left-to-right, then top-to-bottom as tiebreaker. On start, the Spoon logs the map so you can verify:
 
 ```
 [SpacesSync] Screens (4, reading order):
@@ -84,28 +83,26 @@ Monitors not listed in any sync group are independent — they're never affected
 For example, with 4 monitors and only the right three synced:
 
 ```lua
-syncGroups = {
+spoon.SpacesSync.syncGroups = {
   { 2, 3, 4 },  -- pos 1 is independent
 }
 ```
 
 ### Space count mismatches
 
-Monitors in a sync group don't need to have the same number of Spaces. If a target monitor doesn't have a Space at the triggering index, it's skipped with a log message.
-
-For example, if the triggering monitor switches to Space 5 but a target only has 3 Spaces, that target is left on its current Space.
+Monitors in a sync group don't need the same number of Spaces. If a target monitor doesn't have a Space at the triggering index, it's skipped with a log message.
 
 ## Usage
 
-**Toggle:** `Ctrl+Alt+Cmd+Y` (starts disabled)
+**Toggle:** via the hotkey you bind (starts disabled — call `:start()` to enable)
 
 Also available programmatically:
 
 ```lua
-spacesSync.enable()
-spacesSync.disable()
-spacesSync.toggle()
-spacesSync.isEnabled()
+spoon.SpacesSync:start()
+spoon.SpacesSync:stop()
+spoon.SpacesSync:toggle()
+spoon.SpacesSync:isEnabled()
 ```
 
 ## How it works
@@ -136,16 +133,16 @@ In **System Settings > Desktop & Dock > Mission Control**:
 | **Displays have separate Spaces** | ON | If off, all monitors share one Space — nothing to sync. Requires logout to change. |
 | **Automatically rearrange Spaces based on most recent use** | OFF | If on, macOS reorders Space indices by recency, breaking index-based sync. |
 
-The module checks these on init and warns if they're misconfigured.
+The Spoon checks these on start and warns if they're misconfigured.
 
 ## Compatibility
 
-This module has been tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1** on a 4-monitor setup (4x LG SDQHD).
+Tested on **macOS 15.5 (Sequoia)** with **Hammerspoon 1.1.1** on a 4-monitor setup (4x LG SDQHD).
 
 `hs.spaces` relies on private macOS APIs that Apple does not document or guarantee. These APIs can and do change between point releases. If you're running a different macOS version:
 
-- **macOS 15.x (other than 15.5):** May work, may not. The module will load but warn you that your version is untested.
-- **macOS 14 and earlier:** The module will refuse to enable and log an error. We assume the `hs.spaces` APIs behave differently on older macOS versions. At any rate, it is untested.
+- **macOS 15.x (other than 15.5):** May work, may not. The Spoon will load but warn you that your version is untested.
+- **macOS 14 and earlier:** The Spoon will refuse to enable and log an error. The `hs.spaces` APIs behave differently on older macOS versions.
 - **macOS 16+:** Unknown. Test with `debug = true` and check the Hammerspoon console.
 
 If you find it works (or breaks) on a different version, please open an issue or PR.
@@ -154,7 +151,7 @@ If you find it works (or breaks) on a different version, please open an issue or
 
 All output goes to the Hammerspoon console (open via the menubar icon or `hs -c`).
 
-- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on init. Enough to see what the module is doing.
+- **Normal mode** (`debug = false`): logs syncs, skips, warnings, errors, version checks, and the position map on start. Enough to see what the Spoon is doing.
 - **Debug mode** (`debug = true`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
 
 You can also tail logs from the terminal:
@@ -169,19 +166,19 @@ log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
 
 ## For AI agents
 
-If you're an AI agent working on this codebase, read `CLAUDE.md` first — it points to `dev-docs/hammerspoon-quirks.md` which documents critical `hs.spaces` behaviors.
+If you're an AI agent working on this codebase, read `CLAUDE.md` first — it points to `dev-docs/hammerspoon-and-spaces-quirks.md` which documents critical `hs.spaces` behaviors.
 
 The `hs` CLI provides access to the Hammerspoon runtime from the terminal:
 
 ```bash
 hs -c 'hs.reload()'
-hs -c 'local ss = require("spaces-sync"); return "enabled=" .. tostring(ss.isEnabled())'
+hs -c 'return tostring(spoon.SpacesSync:isEnabled())'
 hs -c 'return hs.host.operatingSystemVersion()'
 ```
 
 ## Contributing
 
-Contributions are welcome! This is a small project — open an issue or submit a PR.
+Contributions welcome! Open an issue or submit a PR.
 
 Areas where help is especially useful:
 - Testing on other macOS versions and reporting results
