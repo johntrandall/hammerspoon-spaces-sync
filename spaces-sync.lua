@@ -1,11 +1,12 @@
 -- Synchronized Spaces Module
--- Keeps matched monitors in sync — switching spaces on one syncs the others
+-- Keeps monitors in sync groups — switching spaces on one syncs the others
 --
 -- Usage: Toggle with Ctrl+Alt+Cmd+Y
 --
--- When enabled, switching spaces on any synced monitor will
--- automatically switch all other synced monitors to the matching space index.
--- Independent monitors and excluded monitors are never affected.
+-- Monitors are identified by position number (sorted left-to-right, then
+-- top-to-bottom). Define sync groups as sets of position numbers. When a
+-- monitor in a group switches spaces, all other monitors in that group
+-- follow to the matching space index.
 
 local M = {}
 
@@ -20,19 +21,24 @@ require("hs.timer")
 -- ============================================================================
 
 M.config = {
-  -- Monitor names to synchronize (partial match, case-insensitive)
-  -- Any monitor whose name contains one of these strings will be synced
-  syncedMonitorPatterns = { "LG" },
+  -- Sync groups: each group is a list of monitor position numbers.
+  -- Positions are assigned left-to-right, then top-to-bottom (reading order).
+  -- Monitors not in any group are independent.
+  --
+  -- Examples:
+  --   { {2, 3, 4} }             -- right three monitors sync together
+  --   { {1, 2}, {3, 4} }        -- two independent pairs
+  --   { {1, 2, 3, 4} }          -- all four sync together
+  syncGroups = {
+    { 2, 3, 4 },  -- right three LG monitors
+  },
 
-  -- Monitor names to keep independent (partial match, case-insensitive)
-  -- Any monitor whose name contains one of these strings will NOT be synced
-  independentMonitorPatterns = { "Geminos" },
+  -- Delay between each gotoSpace call (seconds)
+  -- macOS drops rapid back-to-back space switches
+  switchDelay = 0.3,
 
-  -- Number of leftmost synced monitors to exclude (0 = sync all matched)
-  -- e.g., 1 = exclude the leftmost LG, sync the right three
-  excludeLeftmost = 1,
-
-  -- Debounce delay to prevent sync loops (seconds)
+  -- Debounce delay after all switches complete (seconds)
+  -- Prevents watcher from reacting to our own gotoSpace calls
   debounceSeconds = 0.8,
 
   -- Enable debug logging
@@ -44,12 +50,44 @@ M.config = {
 -- ============================================================================
 
 M.state = {
-  enabled = false,  -- Start disabled, user can enable with hotkey
+  enabled = false,
   lastActiveSpaces = {},
   syncInProgress = false,
   spaceWatcher = nil,
   debounceTimer = nil
 }
+
+-- ============================================================================
+-- POSITION MAP
+-- ============================================================================
+-- Maps position numbers to screen UUIDs. Rebuilt on init and screen changes.
+-- Position 1 = leftmost (or topmost if same x). Reading order: x then y.
+
+M._positionToUUID = {}   -- posIndex -> uuid
+M._uuidToPosition = {}   -- uuid -> posIndex
+M._totalScreens = 0
+
+local function rebuildPositionMap()
+  local screens = hs.screen.allScreens()
+  local sorted = {}
+  for _, s in ipairs(screens) do
+    local f = s:frame()
+    table.insert(sorted, { uuid = s:getUUID(), x = f.x, y = f.y, name = s:name() })
+  end
+  -- Sort by x first, then y as tiebreaker (reading order)
+  table.sort(sorted, function(a, b)
+    if a.x ~= b.x then return a.x < b.x end
+    return a.y < b.y
+  end)
+
+  M._positionToUUID = {}
+  M._uuidToPosition = {}
+  M._totalScreens = #sorted
+  for i, entry in ipairs(sorted) do
+    M._positionToUUID[i] = entry.uuid
+    M._uuidToPosition[entry.uuid] = i
+  end
+end
 
 -- ============================================================================
 -- LOGGING
@@ -61,119 +99,74 @@ local function log(msg)
   end
 end
 
--- ============================================================================
--- CORE FUNCTIONS
--- ============================================================================
-
--- Check if a screen name matches any pattern in a list
-local function nameMatchesPatterns(screenName, patterns)
-  if not screenName then return false end
-  local lowerName = screenName:lower()
-  for _, pattern in ipairs(patterns) do
-    if lowerName:find(pattern:lower()) then
-      return true
-    end
-  end
-  return false
-end
-
--- Check if a display UUID belongs to a synced monitor
-local function isSyncedDisplay(uuid)
-  local screen = hs.screen.find(uuid)
-  if not screen then return false end
-  local name = screen:name()
-
-  -- First check if it's explicitly independent
-  if nameMatchesPatterns(name, M.config.independentMonitorPatterns) then
-    return false
-  end
-
-  -- Then check if it matches synced patterns
-  return nameMatchesPatterns(name, M.config.syncedMonitorPatterns)
-end
-
--- Build a sorted position map: uuid -> { posIndex, total, x }
--- Cached per reload; call rebuildPositionMap() if screens change
-M._positionMap = {}
-local function rebuildPositionMap()
-  local screens = hs.screen.allScreens()
-  local sorted = {}
-  for _, s in ipairs(screens) do
-    table.insert(sorted, { uuid = s:getUUID(), x = s:frame().x })
-  end
-  table.sort(sorted, function(a, b) return a.x < b.x end)
-  M._positionMap = {}
-  for i, entry in ipairs(sorted) do
-    M._positionMap[entry.uuid] = { posIndex = i, total = #sorted, x = entry.x }
-  end
-end
-
--- Get display name for logging: "LG SDQHD (1) [pos 2/4, x=2048]"
+-- Display label for logging: "LG SDQHD (1) [pos 2/4, x=2048, y=25]"
 local function getDisplayName(uuid)
   local screen = hs.screen.find(uuid)
-  local name = screen and screen:name() or uuid:sub(1,8)
-  local pos = M._positionMap[uuid]
-  if pos then
-    return name .. " [pos " .. pos.posIndex .. "/" .. pos.total .. ", x=" .. pos.x .. "]"
+  local name = screen and screen:name() or uuid:sub(1, 8)
+  local pos = M._uuidToPosition[uuid]
+  if pos and screen then
+    local f = screen:frame()
+    return name .. " [pos " .. pos .. "/" .. M._totalScreens .. ", x=" .. f.x .. ", y=" .. f.y .. "]"
   end
   return name
 end
 
--- Get all currently synced display UUIDs (respects excludeLeftmost)
-local function getSyncedDisplayUUIDs()
-  -- Collect all pattern-matched screens with their x-position
-  local candidates = {}
-  for _, screen in ipairs(hs.screen.allScreens()) do
-    local uuid = screen:getUUID()
-    if isSyncedDisplay(uuid) then
-      local f = screen:frame()
-      table.insert(candidates, { uuid = uuid, x = f.x })
+-- ============================================================================
+-- SYNC GROUP LOOKUP
+-- ============================================================================
+
+-- Find which sync group a UUID belongs to (returns list of partner UUIDs, or nil)
+local function getSyncGroupFor(uuid)
+  local pos = M._uuidToPosition[uuid]
+  if not pos then return nil end
+
+  for _, group in ipairs(M.config.syncGroups) do
+    local inGroup = false
+    for _, gpos in ipairs(group) do
+      if gpos == pos then inGroup = true; break end
+    end
+    if inGroup then
+      -- Return UUIDs of all OTHER members in this group
+      local partners = {}
+      for _, gpos in ipairs(group) do
+        if gpos ~= pos then
+          local partnerUUID = M._positionToUUID[gpos]
+          if partnerUUID then
+            table.insert(partners, partnerUUID)
+          else
+            log("WARNING: sync group references position " .. gpos .. " but only " .. M._totalScreens .. " screens detected")
+          end
+        end
+      end
+      return partners
     end
   end
-
-  -- Sort by x-position (left to right)
-  table.sort(candidates, function(a, b) return a.x < b.x end)
-
-  -- Exclude the leftmost N
-  local skip = M.config.excludeLeftmost or 0
-  local uuids = {}
-  for i, entry in ipairs(candidates) do
-    if i > skip then
-      table.insert(uuids, entry.uuid)
-    else
-      log("Excluding leftmost: " .. getDisplayName(entry.uuid) .. " (x=" .. entry.x .. ")")
-    end
-  end
-  return uuids
+  return nil  -- not in any group
 end
 
--- Get the index of a space on a display
+-- ============================================================================
+-- SPACE HELPERS
+-- ============================================================================
+
 local function getSpaceIndex(displayUUID, spaceID)
   local screen = hs.screen.find(displayUUID)
   if not screen then return nil end
-
   local spaces = hs.spaces.spacesForScreen(screen)
   if not spaces then return nil end
-
   for i, sid in ipairs(spaces) do
-    if sid == spaceID then
-      return i
-    end
+    if sid == spaceID then return i end
   end
   return nil
 end
 
--- Get space ID at a specific index on a display
 local function getSpaceAtIndex(displayUUID, index)
   local screen = hs.screen.find(displayUUID)
   if not screen then return nil end
-
   local spaces = hs.spaces.spacesForScreen(screen)
   if not spaces then return nil end
   return spaces[index]
 end
 
--- Count spaces on a display
 local function getSpaceCount(displayUUID)
   local screen = hs.screen.find(displayUUID)
   if not screen then return 0 end
@@ -181,33 +174,33 @@ local function getSpaceCount(displayUUID)
   return spaces and #spaces or 0
 end
 
+-- ============================================================================
+-- SYNC ENGINE
+-- ============================================================================
+
 -- Sync one display to match the space index of another (caller manages syncInProgress)
 local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDisplayUUID)
   local targetName = getDisplayName(targetDisplayUUID)
   local targetSpaceCount = getSpaceCount(targetDisplayUUID)
   local sourceSpaceCount = getSpaceCount(sourceDisplayUUID)
 
-  -- Find the index of the source space
   local sourceIndex = getSpaceIndex(sourceDisplayUUID, sourceSpaceID)
   if not sourceIndex then
     log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — could not find source space index")
     return
   end
 
-  -- Check if target has enough spaces
   if sourceIndex > targetSpaceCount then
     log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — no space at index " .. sourceIndex .. " (source has " .. sourceSpaceCount .. " spaces)")
     return
   end
 
-  -- Get the space at that index on the target display
   local targetSpaceID = getSpaceAtIndex(targetDisplayUUID, sourceIndex)
   if not targetSpaceID then
     log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): SKIP — getSpaceAtIndex returned nil for index " .. sourceIndex)
     return
   end
 
-  -- Check if already on target space (avoid unnecessary switch)
   local targetScreen = hs.screen.find(targetDisplayUUID)
   if not targetScreen then
     log("  " .. targetName .. ": SKIP — screen not found")
@@ -221,7 +214,7 @@ local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDispl
     return
   end
 
-  log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): switching from index " .. tostring(currentIdx) .. " -> " .. sourceIndex .. " (spaceID=" .. targetSpaceID .. ")")
+  log("  " .. targetName .. " (" .. targetSpaceCount .. " spaces): switching index " .. tostring(currentIdx) .. " -> " .. sourceIndex .. " (spaceID=" .. targetSpaceID .. ")")
 
   local success, err = pcall(function()
     hs.spaces.gotoSpace(targetSpaceID)
@@ -232,14 +225,9 @@ local function syncDisplayToTarget(sourceDisplayUUID, sourceSpaceID, targetDispl
     return
   end
 
-  -- Verify the switch actually happened
-  local postSwitchSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
-  local postSwitchIdx = getSpaceIndex(targetDisplayUUID, postSwitchSpace) or "?"
-  if postSwitchSpace == targetSpaceID then
-    log("  " .. targetName .. ": VERIFIED at index " .. sourceIndex)
-  else
-    log("  " .. targetName .. ": FAILED — gotoSpace returned OK but still at index " .. tostring(postSwitchIdx) .. " (expected " .. sourceIndex .. ")")
-  end
+  -- Note: gotoSpace is async; immediate verification is unreliable.
+  -- The post-sync snapshot (after all partners) is the real check.
+  log("  " .. targetName .. ": gotoSpace dispatched")
 end
 
 -- ============================================================================
@@ -251,10 +239,8 @@ local function setupWatcher()
     M.state.spaceWatcher:stop()
   end
 
-  -- Get initial state
   M.state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
-  -- Create new watcher
   M.state.spaceWatcher = hs.spaces.watcher.new(function()
     if not M.state.enabled then return end
     if M.state.syncInProgress then
@@ -262,10 +248,9 @@ local function setupWatcher()
       return
     end
 
-    -- Get current state
     local currentSpaces = hs.spaces.activeSpaces() or {}
 
-    -- Log all current space indices for context
+    -- Log current state
     local stateLog = {}
     for uuid, spaceID in pairs(currentSpaces) do
       local idx = getSpaceIndex(uuid, spaceID) or "?"
@@ -276,7 +261,6 @@ local function setupWatcher()
     -- Find which display changed
     local changedUUID = nil
     local changedSpaceID = nil
-    local oldIndex = nil
     local newIndex = nil
 
     for displayUUID, currentSpaceID in pairs(currentSpaces) do
@@ -289,7 +273,6 @@ local function setupWatcher()
         if not changedUUID then
           changedUUID = displayUUID
           changedSpaceID = currentSpaceID
-          oldIndex = oi
           newIndex = ni
         else
           log("  (multiple displays changed simultaneously, only syncing first)")
@@ -303,46 +286,29 @@ local function setupWatcher()
       return
     end
 
-    -- Only sync if change is on one of the synced displays (filtered list)
-    local syncedUUIDs = getSyncedDisplayUUIDs()
-    local isInSyncGroup = false
-    for _, uuid in ipairs(syncedUUIDs) do
-      if uuid == changedUUID then isInSyncGroup = true; break end
-    end
-
-    if not isInSyncGroup then
-      log("SKIP: " .. getDisplayName(changedUUID) .. " is not in sync group (excluded or independent)")
+    -- Find sync partners for the changed display
+    local partners = getSyncGroupFor(changedUUID)
+    if not partners or #partners == 0 then
+      log("SKIP: " .. getDisplayName(changedUUID) .. " is not in any sync group")
       M.state.lastActiveSpaces = currentSpaces
       return
     end
 
-    -- Determine partners to sync
-    local partners = {}
-    for _, otherUUID in ipairs(syncedUUIDs) do
-      if otherUUID ~= changedUUID then
-        table.insert(partners, getDisplayName(otherUUID))
-      end
+    -- Log what we're about to do
+    local partnerNames = {}
+    for _, uuid in ipairs(partners) do
+      table.insert(partnerNames, getDisplayName(uuid))
     end
-    log("SYNCING: " .. getDisplayName(changedUUID) .. " changed to index " .. tostring(newIndex) .. ". Syncing partners: " .. table.concat(partners, ", "))
-    log("Disabling watcher while we sync to other spaces...")
+    log("SYNCING: " .. getDisplayName(changedUUID) .. " changed to index " .. tostring(newIndex) .. ". Partners: " .. table.concat(partnerNames, ", "))
+    log("Disabling watcher while we sync...")
 
-    -- Block re-entrant sync while we switch all partners
+    -- Block re-entrant sync
     M.state.syncInProgress = true
 
-    -- Build list of partners to sync
-    local partnersToSync = {}
-    for _, otherUUID in ipairs(syncedUUIDs) do
-      if otherUUID ~= changedUUID then
-        table.insert(partnersToSync, otherUUID)
-      end
-    end
-
     -- Chain gotoSpace calls with delay between each
-    -- (rapid back-to-back calls get dropped by macOS)
-    local switchDelay = 0.3  -- seconds between each gotoSpace
     local function syncPartner(index)
-      if index > #partnersToSync then
-        -- All partners done — snapshot and release
+      if index > #partners then
+        -- All partners done
         M.state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
         local postLog = {}
@@ -352,7 +318,7 @@ local function setupWatcher()
         end
         log("ALL PARTNERS DONE. Post-sync spaces: " .. table.concat(postLog, ", "))
 
-        -- Release sync flag after debounce period
+        -- Release after debounce
         if M.state.debounceTimer then
           M.state.debounceTimer:stop()
         end
@@ -364,17 +330,15 @@ local function setupWatcher()
         return
       end
 
-      local otherUUID = partnersToSync[index]
-      log("Syncing partner " .. index .. "/" .. #partnersToSync .. "...")
-      syncDisplayToTarget(changedUUID, changedSpaceID, otherUUID)
+      local partnerUUID = partners[index]
+      log("Syncing partner " .. index .. "/" .. #partners .. "...")
+      syncDisplayToTarget(changedUUID, changedSpaceID, partnerUUID)
 
-      -- Wait before switching next partner
-      hs.timer.doAfter(switchDelay, function()
+      hs.timer.doAfter(M.config.switchDelay, function()
         syncPartner(index + 1)
       end)
     end
 
-    -- Start the chain
     syncPartner(1)
   end)
 
@@ -441,39 +405,45 @@ end
 function M.init()
   log("Initializing")
 
-  -- Build position map for display labels
   rebuildPositionMap()
 
-  -- Bind hotkey to toggle (Ctrl+Alt+Cmd+Y)
+  -- Bind hotkey
   hs.hotkey.bind({"ctrl", "alt", "cmd"}, "Y", function()
     M.toggle()
   end)
 
-  -- Log detected monitors
-  log("Ready. Toggle sync with Ctrl+Alt+Cmd+Y")
-  log("Sync patterns: " .. table.concat(M.config.syncedMonitorPatterns, ", "))
-  log("Independent patterns: " .. table.concat(M.config.independentMonitorPatterns, ", "))
-
-  -- Show which monitors are in the sync group
-  local syncGroupUUIDs = getSyncedDisplayUUIDs()
-  local syncGroupSet = {}
-  for _, uuid in ipairs(syncGroupUUIDs) do syncGroupSet[uuid] = true end
-
-  log("Exclude leftmost: " .. (M.config.excludeLeftmost or 0))
-  for _, screen in ipairs(hs.screen.allScreens()) do
-    local uuid = screen:getUUID()
-    local name = screen:name()
-    local f = screen:frame()
-    local label
-    if syncGroupSet[uuid] then
-      label = "SYNCED"
-    elseif isSyncedDisplay(uuid) then
-      label = "EXCLUDED (leftmost)"
-    else
-      label = "INDEPENDENT"
+  -- Log position map
+  log("Position map (" .. M._totalScreens .. " screens, reading order):")
+  for pos = 1, M._totalScreens do
+    local uuid = M._positionToUUID[pos]
+    if uuid then
+      log("  pos " .. pos .. ": " .. getDisplayName(uuid))
     end
-    log("  " .. name .. " (x=" .. f.x .. ") -> " .. label)
   end
+
+  -- Log sync groups
+  for gi, group in ipairs(M.config.syncGroups) do
+    local members = {}
+    for _, pos in ipairs(group) do
+      local uuid = M._positionToUUID[pos]
+      if uuid then
+        table.insert(members, "pos " .. pos .. " (" .. (hs.screen.find(uuid):name()) .. ")")
+      else
+        table.insert(members, "pos " .. pos .. " (NOT CONNECTED)")
+      end
+    end
+    log("Sync group " .. gi .. ": " .. table.concat(members, ", "))
+  end
+
+  -- Log ungrouped monitors
+  for pos = 1, M._totalScreens do
+    local uuid = M._positionToUUID[pos]
+    if uuid and not getSyncGroupFor(uuid) then
+      log("Independent: pos " .. pos .. " (" .. (hs.screen.find(uuid):name()) .. ")")
+    end
+  end
+
+  log("Ready. Toggle with Ctrl+Alt+Cmd+Y")
 end
 
 -- Cleanup on reload
