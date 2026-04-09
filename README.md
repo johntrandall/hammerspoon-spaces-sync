@@ -91,7 +91,9 @@ syncGroups = {
 
 ### Space count mismatches
 
-If the triggering monitor switches to space index 5 but a target only has 3 spaces, that target is skipped with a log message.
+Monitors in a sync group don't need to have the same number of Spaces. If a target monitor doesn't have a Space at the triggering index, it's skipped with a log message.
+
+For example, if the triggering monitor switches to Space 5 but a target only has 3 Spaces, that target is left on its current Space.
 
 ## Usage
 
