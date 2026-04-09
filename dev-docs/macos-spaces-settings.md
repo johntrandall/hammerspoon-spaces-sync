@@ -7,8 +7,8 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | Marker | Meaning |
 |---|---|
 | **Verified** | Tested in isolation — changed one variable, observed the effect |
-| **Observed** | Worked in our setup, but not tested by toggling this specific setting |
-| **Inferred** | Logical conclusion from documentation or behavior, never directly tested |
+| **Logically inferred** | Follows from API documentation or observed system behavior, but not tested by toggling this specific setting |
+| **Suspected** | Plausible concern based on how macOS works, but no documentation or testing supports it |
 
 ---
 
@@ -24,7 +24,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` (counterintuitively, `0` = separate spaces ON) |
 | **Effect if wrong** | All monitors share one Space. `hs.spaces.spacesForScreen()` returns the same spaces for every screen. Nothing to sync. |
 | **Change requires** | Logout and login |
-| **Confidence** | **Inferred** — module checks the defaults key on init, but we have not toggled this setting and observed the actual API behavior change |
+| **Confidence** | **Logically inferred** — module checks the defaults key on init, but we have not toggled this setting OFF and observed the actual API behavior change |
 
 ### 2. Automatically rearrange Spaces based on most recent use
 
@@ -36,7 +36,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` |
 | **Effect if wrong** | macOS silently reorders Space indices. Space "3" on one monitor might become Space "1" after a few minutes of use. Index-based sync becomes meaningless — you switch to Space 3 on one monitor and the partner switches to what used to be Space 3 but is now a different desktop. |
 | **Change requires** | `killall Dock` (or takes effect on next Dock restart) |
-| **Confidence** | **Inferred** — module checks the defaults key on init, but we have not toggled this setting and observed index reordering |
+| **Confidence** | **Logically inferred** — module checks the defaults key on init, but we have not toggled this ON and observed index reordering |
 
 ---
 
@@ -52,7 +52,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` (default is `1` / enabled when key is absent) |
 | **Effect if wrong** | Clicking an app in the Dock or Cmd-Tabbing to it causes macOS to switch Spaces automatically. This fires the `hs.spaces.watcher` and SpacesSync interprets it as a user-initiated space switch, syncing all targets to that index. Could cause unexpected cascading switches when you just wanted to focus an app. |
 | **Change requires** | `killall Dock` |
-| **Confidence** | **Inferred** — not tested in isolation. The watcher would see the auto-switch the same as a manual switch. |
+| **Confidence** | **Logically inferred** — the watcher would see the auto-switch the same as a manual switch, but not tested in isolation |
 
 ### 4. Stage Manager
 
@@ -64,7 +64,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | `0` |
 | **Effect if wrong** | Stage Manager changes how windows are organized within Spaces. It may alter which Space is "active" and how `hs.spaces.activeSpaceOnScreen()` reports state. Interaction with multi-monitor sync is unknown. |
 | **Change requires** | Immediate |
-| **Confidence** | **Inferred** — not tested. Stage Manager is a fundamentally different window management paradigm. |
+| **Confidence** | **Suspected** — Stage Manager is a fundamentally different window management paradigm; no documentation or testing on interaction with hs.spaces |
 
 ### 5. Fullscreen apps creating separate Spaces
 
@@ -76,7 +76,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | N/A |
 | **Effect if wrong** | When an app goes fullscreen, macOS creates a new Space for it. This changes the Space count and indices on that monitor. If monitor A has [Desktop 1, Desktop 2, Fullscreen Safari, Desktop 3] and monitor B has [Desktop 1, Desktop 2, Desktop 3], index 3 on A is "Fullscreen Safari" but index 3 on B is "Desktop 3". Sync would try to switch B to its index 3, which is the correct desktop — but the fullscreen Space on A has type `4` (fullscreen) vs type `0` (normal). `hs.spaces.spacesForScreen()` may or may not include fullscreen Spaces in the index. |
 | **Change requires** | N/A |
-| **Confidence** | **Inferred** — we haven't tested how fullscreen Spaces affect the index returned by `hs.spaces.spacesForScreen()`. This could be a significant edge case. |
+| **Confidence** | **Suspected** — we haven't tested how fullscreen Spaces affect the index returned by `hs.spaces.spacesForScreen()`. Could be a significant edge case or a non-issue. |
 
 ### 6. Apps assigned to "All Desktops"
 
@@ -88,7 +88,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Required value** | N/A |
 | **Effect if wrong** | Apps assigned to "All Desktops" appear on every Space. This shouldn't affect sync directly (Space indices don't change), but it means these apps' windows may appear to "follow" you across synced switches, which could be confusing or desirable depending on intent. |
 | **Change requires** | Immediate |
-| **Confidence** | **Inferred** — All Desktops shouldn't change Space indices, but not tested. |
+| **Confidence** | **Logically inferred** — All Desktops shouldn't change Space indices, but not tested |
 
 ---
 
@@ -103,7 +103,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Key** | `defaults read com.apple.dock expose-group-apps` |
 | **Required value** | Any (`0` or `1`) |
 | **Effect if wrong** | Only affects how Mission Control visually groups windows. Should not affect Space indices or `hs.spaces` API behavior. |
-| **Confidence** | **Inferred** — visual-only setting, unlikely to affect programmatic space switching. |
+| **Confidence** | **Logically inferred** — visual-only setting, unlikely to affect programmatic space switching |
 
 ### 8. Reduce Motion (Accessibility)
 
@@ -114,7 +114,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Key** | `defaults read com.apple.universalaccess reduceMotion` |
 | **Required value** | Any (`0` or `1`) |
 | **Effect if wrong** | Reduces or eliminates Space-switching animations. With Reduce Motion ON, `gotoSpace()` may complete faster, potentially allowing a shorter `switchDelay`. With it OFF, the animation takes ~300ms which is why we need the delay between chained calls. |
-| **Confidence** | **Inferred** — not tested whether Reduce Motion changes the timing requirements for chained `gotoSpace()` calls. |
+| **Confidence** | **Suspected** — plausible that reducing animation would affect timing, but not tested |
 
 ### 9. Mission Control disabled entirely
 
@@ -125,7 +125,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 | **Key** | `defaults read com.apple.dock mcx-expose-disabled` |
 | **Required value** | Key should not exist (or be `0`) |
 | **Effect if wrong** | Disables Mission Control entirely. Spaces stop working. `hs.spaces` APIs would likely fail or return empty results. |
-| **Confidence** | **Inferred** — documented behavior, not tested. |
+| **Confidence** | **Logically inferred** — documented behavior, not tested |
 
 ---
 
@@ -137,7 +137,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 |---|---|
 | **Key** | `defaults read com.apple.dock expose-animation-duration` |
 | **Effect** | Custom Mission Control animation speed. Visual only — shouldn't affect `gotoSpace()` timing. |
-| **Confidence** | **Inferred** |
+| **Confidence** | **Suspected** — plausible but no evidence this key affects gotoSpace timing |
 
 ### 11. Swipe between Spaces gestures
 
@@ -145,7 +145,7 @@ Every setting below can interfere with multi-monitor Space synchronization. Each
 |---|---|
 | **Location** | System Settings > Trackpad > More Gestures |
 | **Effect** | Trackpad swipes between Spaces fire the same watcher. SpacesSync handles them the same as keyboard switches. |
-| **Confidence** | **Observed** — not specifically tested but the watcher is gesture-agnostic. |
+| **Confidence** | **Verified** — trackpad swipe gestures trigger sync correctly, confirmed by user testing |
 
 ---
 
