@@ -10,6 +10,40 @@ Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool
 
 ## Install
 
+### Via SpoonInstall
+
+```lua
+hs.loadSpoon("SpoonInstall")
+spoon.SpoonInstall.repos.SpacesSync = {
+  url = "https://github.com/johntrandall/hammerspoon-spaces-sync",
+  desc = "SpacesSync Spoon repository",
+  branch = "main",
+}
+spoon.SpoonInstall:andUse("SpacesSync", {
+  repo = "SpacesSync",
+  start = true,
+  config = {
+    syncGroups = { {1, 2} },
+  },
+  hotkeys = {
+    toggle = {{"ctrl", "alt", "cmd"}, "Y"},
+  },
+})
+```
+
+### Manual download
+
+Download [`SpacesSync.spoon.zip`](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest/download/SpacesSync.spoon.zip) from the [latest release](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest), unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
+
+Then add to `~/.hammerspoon/init.lua`:
+
+```lua
+hs.loadSpoon("SpacesSync")
+spoon.SpacesSync.syncGroups = { {1, 2} }
+spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)
+spoon.SpacesSync:start()
+```
+
 ### From source
 
 ```bash
@@ -19,19 +53,6 @@ cd hammerspoon-spaces-sync
 ```
 
 This symlinks `Source/SpacesSync.spoon` into `~/.hammerspoon/Spoons/`.
-
-### Manual
-
-Download [`SpacesSync.spoon.zip`](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest/download/SpacesSync.spoon.zip) from the [latest release](https://github.com/johntrandall/hammerspoon-spaces-sync/releases/latest), unzip, and double-click — Hammerspoon auto-installs it to `~/.hammerspoon/Spoons/`.
-
-### Add to `~/.hammerspoon/init.lua`
-
-```lua
-hs.loadSpoon("SpacesSync")
-spoon.SpacesSync.syncGroups = { {1, 2} }
-spoon.SpacesSync:bindHotkeys({ toggle = {{"ctrl", "alt", "cmd"}, "Y"} })
-spoon.SpacesSync:start()
-```
 
 ## Configuration
 
