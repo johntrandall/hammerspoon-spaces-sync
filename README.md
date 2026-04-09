@@ -11,8 +11,8 @@ Requires [Hammerspoon](https://www.hammerspoon.org/) — a macOS automation tool
 ### From source
 
 ```bash
-git clone https://github.com/johnrandall/hammerspoon-spaces-sync.git
-cd hammerspoon-spaces-sync
+git clone https://github.com/johnrandall/macos-spaces-multimonitor-sync-hammerspoon.git
+cd macos-spaces-multimonitor-sync-hammerspoon
 ./install.sh
 ```
 
