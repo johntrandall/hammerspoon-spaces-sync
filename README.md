@@ -81,13 +81,17 @@ spoon.SpacesSync:start()
 | `syncGroups`      | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers.                                       |
 | `switchDelay`     | `0.3`        | Seconds between each `gotoSpace` call.                                                                       |
 | `debounceSeconds` | `0.8`        | Seconds after sync before watcher re-enables.                                                                |
-| `logger`          | `hs.logger` at `info` | Logger object. Set level with `spoon.SpacesSync.logger.setLogLevel('debug')`.                         |
+| `spaceNames`      | `{}`         | Table mapping Space index → name. Persisted via `hs.settings`. See [Space names](#space-names).              |
+| `popupDuration`   | `2`          | Seconds the space-names popup stays visible.                                                                 |
+| `logger`          | `hs.logger` at `info` | Logger object. Set level with `spoon.SpacesSync.logger.setLogLevel('debug')`.                       |
 
 Hotkeys are configured via `:bindHotkeys()`:
 
 ```lua
 spoon.SpacesSync:bindHotkeys({
-  toggle = {{"ctrl", "alt", "cmd"}, "Y"},
+  toggle      = {{"ctrl", "alt", "cmd"}, "Y"},
+  showNames   = {{"ctrl", "alt", "cmd"}, "N"},
+  renameSpace = {{"ctrl", "alt", "cmd"}, "R"},
 })
 ```
 
@@ -119,6 +123,28 @@ spoon.SpacesSync.syncGroups = {
 
 Monitors in a sync group don't need the same number of Spaces. If a target monitor doesn't have a Space at the triggering index, it's skipped with a log message.
 
+### Space names
+
+Each Space index can carry a name. Names are global (they apply to the Nth Space on every monitor) and are persisted to `hs.settings`, so they survive Hammerspoon reloads and restarts.
+
+Every time you switch Spaces, a popup appears on the trigger monitor listing all Spaces on that monitor with the newly active one highlighted. The popup fades after `popupDuration` seconds (default 2).
+
+**Rename the current Space:** press the `renameSpace` hotkey (`⌃⌥⌘R` by default). A native dialog prompts for a name; submitting an empty name clears the existing name. The new name is persisted and the popup is shown with the renamed space highlighted.
+
+**Show the popup on demand:** press the `showNames` hotkey (`⌃⌥⌘N` by default). The popup appears on the monitor under the mouse cursor, highlighting its currently active Space.
+
+**Seed names from your config** (optional — they'll be overwritten as soon as you rename):
+
+```lua
+spoon.SpacesSync.spaceNames = {
+  [1] = "Code",
+  [2] = "Email",
+  [3] = "Browser",
+}
+```
+
+Names for indices beyond the current monitor's Space count are kept in storage but hidden from the popup. Unnamed indices render as dim italic "Space N".
+
 ## Usage
 
 **Toggle:** via the hotkey you bind (starts disabled — call `:start()` to enable)
@@ -130,6 +156,8 @@ spoon.SpacesSync:start()
 spoon.SpacesSync:stop()
 spoon.SpacesSync:toggle()
 spoon.SpacesSync:isEnabled()
+spoon.SpacesSync:showNames()
+spoon.SpacesSync:renameCurrentSpace()
 ```
 
 ## How it works

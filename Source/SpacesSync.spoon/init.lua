@@ -112,6 +112,31 @@ obj.switchDelay = 0.3
 --- Default value: `0.8`
 obj.debounceSeconds = 0.8
 
+--- SpacesSync.spaceNames
+--- Variable
+--- Table mapping Space index (number) to name (string). Shared across all
+--- sync groups — index N refers to the Nth Space on any monitor.
+---
+--- Names are persisted via `hs.settings` and survive Hammerspoon reloads.
+--- Names you set on this table before first use take precedence over
+--- persisted values for the same index; persisted values fill in the rest.
+---
+--- Default value: `{}`
+---
+--- Example:
+--- ```lua
+--- spoon.SpacesSync.spaceNames = { [1] = "Code", [2] = "Email", [3] = "Browser" }
+--- ```
+obj.spaceNames = {}
+
+--- SpacesSync.popupDuration
+--- Variable
+--- How long (in seconds) the Space-names popup remains visible after a
+--- Space switch or explicit `:showNames()` call.
+---
+--- Default value: `2`
+obj.popupDuration = 2
+
 --- SpacesSync.defaultHotkeys
 --- Variable
 --- Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:
@@ -123,11 +148,15 @@ obj.debounceSeconds = 0.8
 --- Default value:
 --- ```lua
 --- {
----   toggle = {{"ctrl", "alt", "cmd"}, "Y"},
+---   toggle      = {{"ctrl", "alt", "cmd"}, "Y"},
+---   showNames   = {{"ctrl", "alt", "cmd"}, "N"},
+---   renameSpace = {{"ctrl", "alt", "cmd"}, "R"},
 --- }
 --- ```
 obj.defaultHotkeys = {
-  toggle = { {"ctrl", "alt", "cmd"}, "Y" },
+  toggle      = { {"ctrl", "alt", "cmd"}, "Y" },
+  showNames   = { {"ctrl", "alt", "cmd"}, "N" },
+  renameSpace = { {"ctrl", "alt", "cmd"}, "R" },
 }
 
 -- ============================================================================
@@ -245,6 +274,236 @@ local function getSpaceCount(uuid)
 end
 
 -- ============================================================================
+-- SPACE NAMES
+-- ============================================================================
+
+local SETTINGS_KEY = "SpacesSync.spaceNames"
+local namesLoaded = false
+
+local function loadSpaceNames()
+  local stored = hs.settings.get(SETTINGS_KEY)
+  if type(stored) ~= "table" then return {} end
+  -- hs.settings round-trips via plist; numeric keys may come back as strings.
+  local normalized = {}
+  for k, v in pairs(stored) do
+    local n = tonumber(k)
+    if n and type(v) == "string" then
+      normalized[n] = v
+    end
+  end
+  return normalized
+end
+
+local function saveSpaceNames()
+  local toStore = {}
+  for k, v in pairs(obj.spaceNames) do
+    if type(v) == "string" and v ~= "" then
+      toStore[tostring(k)] = v
+    end
+  end
+  hs.settings.set(SETTINGS_KEY, toStore)
+end
+
+-- Merge persisted names with any user-supplied defaults. User-supplied wins
+-- on conflict; persisted fills in the rest. Idempotent.
+local function ensureNamesLoaded()
+  if namesLoaded then return end
+  local persisted = loadSpaceNames()
+  for k, v in pairs(persisted) do
+    if obj.spaceNames[k] == nil then
+      obj.spaceNames[k] = v
+    end
+  end
+  namesLoaded = true
+end
+
+local function nameForIndex(index)
+  ensureNamesLoaded()
+  local name = obj.spaceNames[index]
+  if name and name ~= "" then
+    return name, false
+  end
+  return "Space " .. tostring(index), true
+end
+
+-- ============================================================================
+-- POPUP
+-- ============================================================================
+
+-- Mockup 4: small context rows above/below + large highlighted current row.
+-- All rows show their index. Rendered with hs.canvas on the trigger monitor.
+
+local popupState = {
+  canvas = nil,
+  timer = nil,
+}
+
+local POPUP_MARGIN_TOP = 80
+local POPUP_PAD_X = 24
+local POPUP_PAD_Y = 12
+local POPUP_ROW_HEIGHT = 26
+local POPUP_BIG_HEIGHT = 60
+local POPUP_CORNER_RADIUS = 14
+local POPUP_MIN_WIDTH = 260
+local POPUP_IDX_COL_WIDTH = 36
+
+local SMALL_FONT_SIZE = 14
+local SMALL_FONT = "Helvetica"
+local BIG_FONT_SIZE = 26
+local BIG_FONT = "Helvetica-Bold"
+
+local COLOR_PANEL_FILL   = { red = 30/255, green = 30/255, blue = 32/255, alpha = 0.92 }
+local COLOR_PANEL_STROKE = { white = 1, alpha = 0.10 }
+local COLOR_SMALL_IDX    = { white = 1, alpha = 0.42 }
+local COLOR_SMALL_NAME   = { white = 1, alpha = 0.58 }
+local COLOR_UNNAMED      = { white = 1, alpha = 0.32 }
+local COLOR_BIG_IDX      = { red = 10/255, green = 132/255, blue = 1, alpha = 1 }  -- macOS system blue
+local COLOR_BIG_NAME     = { white = 1, alpha = 1 }
+
+local function measureTextWidth(text, font, size)
+  local styled = hs.styledtext.new(text, {
+    font = { name = font, size = size },
+    color = { white = 1, alpha = 1 },
+  })
+  local s = hs.drawing.getTextDrawingSize(styled)
+  return (s and s.w) or (#text * size * 0.6)
+end
+
+local function hidePopup()
+  if popupState.timer then
+    popupState.timer:stop()
+    popupState.timer = nil
+  end
+  if popupState.canvas then
+    popupState.canvas:delete()
+    popupState.canvas = nil
+  end
+end
+
+-- Show the space-names popup on the given monitor, highlighting `highlightedIndex`
+-- (pass nil if no current index is known — in that case all rows render small).
+local function showPopup(triggerUUID, highlightedIndex)
+  hidePopup()
+
+  local screen = hs.screen.find(triggerUUID)
+  if not screen then return end
+
+  local spaceCount = getSpaceCount(triggerUUID)
+  if spaceCount < 1 then return end
+
+  ensureNamesLoaded()
+
+  -- Build row list — only indices that currently exist on the trigger monitor.
+  local rows = {}
+  local maxNameWidth = 0
+  for i = 1, spaceCount do
+    local name, isUnnamed = nameForIndex(i)
+    local isCurrent = (highlightedIndex ~= nil and i == highlightedIndex)
+    local font = isCurrent and BIG_FONT or SMALL_FONT
+    local size = isCurrent and BIG_FONT_SIZE or SMALL_FONT_SIZE
+    local w = measureTextWidth(name, font, size)
+    if w > maxNameWidth then maxNameWidth = w end
+    rows[#rows + 1] = {
+      index = i,
+      name = name,
+      unnamed = isUnnamed,
+      current = isCurrent,
+    }
+  end
+
+  local panelWidth = math.max(
+    POPUP_MIN_WIDTH,
+    math.ceil(maxNameWidth + POPUP_PAD_X * 2 + POPUP_IDX_COL_WIDTH + 8)
+  )
+
+  local panelHeight = POPUP_PAD_Y * 2
+  for _, row in ipairs(rows) do
+    panelHeight = panelHeight + (row.current and POPUP_BIG_HEIGHT or POPUP_ROW_HEIGHT)
+  end
+
+  local sf = screen:frame()
+  local x = math.floor(sf.x + (sf.w - panelWidth) / 2)
+  local y = math.floor(sf.y + POPUP_MARGIN_TOP)
+
+  local c = hs.canvas.new({ x = x, y = y, w = panelWidth, h = panelHeight })
+  c:level(hs.canvas.windowLevels.overlay)
+  c:behavior({ "canJoinAllSpaces", "stationary" })
+
+  -- Rounded panel background
+  c:appendElements({
+    type = "rectangle",
+    action = "fill",
+    fillColor = COLOR_PANEL_FILL,
+    roundedRectRadii = { xRadius = POPUP_CORNER_RADIUS, yRadius = POPUP_CORNER_RADIUS },
+    frame = { x = 0, y = 0, w = panelWidth, h = panelHeight },
+  })
+  c:appendElements({
+    type = "rectangle",
+    action = "stroke",
+    strokeColor = COLOR_PANEL_STROKE,
+    strokeWidth = 1,
+    roundedRectRadii = { xRadius = POPUP_CORNER_RADIUS, yRadius = POPUP_CORNER_RADIUS },
+    frame = { x = 0, y = 0, w = panelWidth, h = panelHeight },
+  })
+
+  -- Row content
+  local cursorY = POPUP_PAD_Y
+  for _, row in ipairs(rows) do
+    local rowHeight = row.current and POPUP_BIG_HEIGHT or POPUP_ROW_HEIGHT
+    local fontSize = row.current and BIG_FONT_SIZE or SMALL_FONT_SIZE
+    local fontName = row.current and BIG_FONT or SMALL_FONT
+
+    local idxColor = row.current and COLOR_BIG_IDX or COLOR_SMALL_IDX
+    local nameColor
+    if row.current then
+      nameColor = COLOR_BIG_NAME
+    elseif row.unnamed then
+      nameColor = COLOR_UNNAMED
+    else
+      nameColor = COLOR_SMALL_NAME
+    end
+
+    -- Vertically center the text within the row.
+    local textY = cursorY + (rowHeight - fontSize) / 2 - 2
+
+    c:appendElements({
+      type = "text",
+      text = hs.styledtext.new(tostring(row.index), {
+        font = { name = fontName, size = fontSize },
+        color = idxColor,
+        paragraphStyle = { alignment = "right" },
+      }),
+      frame = {
+        x = POPUP_PAD_X,
+        y = textY,
+        w = POPUP_IDX_COL_WIDTH - 8,
+        h = fontSize + 6,
+      },
+    })
+
+    c:appendElements({
+      type = "text",
+      text = hs.styledtext.new(row.name, {
+        font = { name = fontName, size = fontSize },
+        color = nameColor,
+      }),
+      frame = {
+        x = POPUP_PAD_X + POPUP_IDX_COL_WIDTH,
+        y = textY,
+        w = panelWidth - POPUP_PAD_X * 2 - POPUP_IDX_COL_WIDTH,
+        h = fontSize + 6,
+      },
+    })
+
+    cursorY = cursorY + rowHeight
+  end
+
+  c:show()
+  popupState.canvas = c
+  popupState.timer = hs.timer.doAfter(obj.popupDuration, hidePopup)
+end
+
+-- ============================================================================
 -- SYNC ENGINE
 -- ============================================================================
 
@@ -353,6 +612,9 @@ local function setupWatcher()
     local targets = getTargetsFor(changedUUID)
     if not targets or #targets == 0 then
       obj.logger.d("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
+      if type(newIndex) == "number" then
+        showPopup(changedUUID, newIndex)
+      end
       state.lastActiveSpaces = currentSpaces
       return
     end
@@ -368,6 +630,10 @@ local function setupWatcher()
     local function syncNext(i)
       if i > #targets then
         state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+
+        if type(newIndex) == "number" then
+          showPopup(changedUUID, newIndex)
+        end
 
         if obj.logger.level >= 4 then -- debug level
           local parts = {}
@@ -491,6 +757,13 @@ function obj:start()
   -- hs.application is loaded as a transitive dependency of hs.spaces.gotoSpace()
   require("hs.application"); _ = hs.application.frontmostApplication
   require("hs.timer");       _ = hs.timer.secondsSinceEpoch
+  require("hs.canvas");      _ = hs.canvas.new
+  require("hs.styledtext");  _ = hs.styledtext.new
+  require("hs.settings");    _ = hs.settings.get
+  require("hs.dialog");      _ = hs.dialog.textPrompt
+  require("hs.mouse");       _ = hs.mouse.getCurrentScreen
+
+  ensureNamesLoaded()
 
   obj.logger.i("Starting (SpacesSync " .. obj.version .. ")")
 
@@ -613,6 +886,7 @@ function obj:stop()
     state.debounceTimer:stop()
     state.debounceTimer = nil
   end
+  hidePopup()
   hs.alert.show("SpacesSync: OFF")
   obj.logger.i("Disabled")
   return self
@@ -649,13 +923,112 @@ function obj:isEnabled()
   return state.enabled
 end
 
+--- SpacesSync:showNames()
+--- Method
+--- Shows the Space-names popup on the monitor under the mouse cursor
+--- (or the main monitor as fallback). The popup lists every Space on that
+--- monitor with its name, highlighting the currently active one, and fades
+--- after `SpacesSync.popupDuration` seconds.
+---
+--- Works independently of `:start()` — you can bind this to a hotkey
+--- without enabling sync.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The SpacesSync object
+function obj:showNames()
+  ensureNamesLoaded()
+  if totalScreens == 0 then rebuildPositionMap() end
+
+  local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
+  if not screen then
+    obj.logger.w("showNames: no screen available")
+    return self
+  end
+
+  local uuid = screen:getUUID()
+  local currentSpaceID = hs.spaces.activeSpaceOnScreen(screen)
+  local index = currentSpaceID and getSpaceIndex(uuid, currentSpaceID) or nil
+  showPopup(uuid, index)
+  return self
+end
+
+--- SpacesSync:renameCurrentSpace()
+--- Method
+--- Prompts for a new name for the Space currently active on the monitor
+--- under the mouse cursor (or the main monitor as fallback). The name is
+--- stored against the Space's index and persisted via `hs.settings`, so it
+--- applies to that index on every monitor in every sync group.
+---
+--- Submitting an empty name clears the existing name for that index.
+---
+--- After saving, the popup is shown with the renamed space highlighted.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The SpacesSync object
+function obj:renameCurrentSpace()
+  ensureNamesLoaded()
+  if totalScreens == 0 then rebuildPositionMap() end
+
+  local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
+  if not screen then
+    hs.alert.show("SpacesSync: no screen")
+    return self
+  end
+
+  local uuid = screen:getUUID()
+  local currentSpaceID = hs.spaces.activeSpaceOnScreen(screen)
+  if not currentSpaceID then
+    hs.alert.show("SpacesSync: can't read current Space")
+    return self
+  end
+
+  local index = getSpaceIndex(uuid, currentSpaceID)
+  if not index then
+    hs.alert.show("SpacesSync: can't determine Space index")
+    return self
+  end
+
+  local existing = obj.spaceNames[index] or ""
+  local button, text = hs.dialog.textPrompt(
+    "Rename Space " .. index,
+    "Enter a name for Space " .. index .. ". Applies to index " .. index .. " on every monitor.\nLeave blank to clear.",
+    existing,
+    "Save",
+    "Cancel"
+  )
+
+  if button ~= "Save" then
+    return self
+  end
+
+  if text and text ~= "" then
+    obj.spaceNames[index] = text
+    obj.logger.i("Renamed Space " .. index .. " -> \"" .. text .. "\"")
+  else
+    obj.spaceNames[index] = nil
+    obj.logger.i("Cleared name for Space " .. index)
+  end
+  saveSpaceNames()
+
+  showPopup(uuid, index)
+  return self
+end
+
 --- SpacesSync:bindHotkeys(mapping)
 --- Method
 --- Binds hotkeys for SpacesSync.
 ---
 --- Parameters:
----  * mapping - A table containing hotkey modifier/key details for the following items:
+---  * mapping - A table containing hotkey modifier/key details for any of:
 ---   * toggle - Toggle Space syncing on/off
+---   * showNames - Show the Space-names popup on the current monitor
+---   * renameSpace - Rename the currently active Space
 ---
 --- Returns:
 ---  * The SpacesSync object
@@ -665,7 +1038,9 @@ end
 ---    `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`
 function obj:bindHotkeys(mapping)
   local def = {
-    toggle = function() self:toggle() end,
+    toggle      = function() self:toggle() end,
+    showNames   = function() self:showNames() end,
+    renameSpace = function() self:renameCurrentSpace() end,
   }
   hs.spoons.bindHotkeysToSpec(def, mapping)
   return self

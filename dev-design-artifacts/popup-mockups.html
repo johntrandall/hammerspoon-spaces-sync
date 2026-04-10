@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpacesSync popup mockups</title>
+<style>
+  :root {
+    --accent: #0A84FF;          /* macOS system blue */
+    --accent-dim: rgba(10, 132, 255, 0.85);
+    --panel-bg: rgba(30, 30, 32, 0.92);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --text: #ffffff;
+    --text-dim: rgba(255, 255, 255, 0.55);
+    --text-unnamed: rgba(255, 255, 255, 0.35);
+    --idx: rgba(255, 255, 255, 0.45);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: #1a1a1d;
+    color: #eaeaea;
+    min-height: 100vh;
+  }
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  h1 { font-weight: 600; font-size: 22px; margin: 0 0 8px; }
+  .sub { color: #888; margin: 0 0 40px; font-size: 13px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 40px;
+  }
+
+  .mockup {
+    background: #2a2a2e;
+    border-radius: 12px;
+    padding: 32px 24px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 1px solid #3a3a3e;
+  }
+  .mockup h2 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: #eaeaea;
+    align-self: flex-start;
+  }
+  .mockup .desc {
+    font-size: 11px;
+    color: #888;
+    margin: 0 0 24px;
+    align-self: flex-start;
+    line-height: 1.5;
+  }
+  .stage {
+    /* simulated desktop patch so HUD looks in-context */
+    background: linear-gradient(135deg, #3d4a5c 0%, #2b3545 100%);
+    border-radius: 8px;
+    padding: 40px 24px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 260px;
+  }
+
+  /* ============================================================
+     Shared panel style — HUD-like, matches hs.alert visual mood
+     ============================================================ */
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
+    padding: 10px 0;
+    min-width: 220px;
+    color: var(--text);
+    font-feature-settings: "tnum" 1;  /* tabular numerals */
+  }
+
+  /* ============================================================
+     Mockup 1 — list with highlight band
+     ============================================================ */
+  .m1 .row {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    align-items: center;
+    padding: 8px 20px;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+  .m1 .row .idx { color: var(--idx); font-variant-numeric: tabular-nums; }
+  .m1 .row.current {
+    background: var(--accent-dim);
+  }
+  .m1 .row.current .idx { color: rgba(255,255,255,0.85); }
+  .m1 .row.current .name { font-weight: 600; }
+  .m1 .row .name.unnamed { color: var(--text-unnamed); font-style: italic; }
+
+  /* ============================================================
+     Mockup 2 — chevron marker, no numbers
+     ============================================================ */
+  .m2 .row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    padding: 7px 22px 7px 16px;
+    font-size: 15px;
+  }
+  .m2 .row .chev { color: transparent; font-size: 13px; text-align: center; }
+  .m2 .row.current .chev { color: var(--accent); }
+  .m2 .row.current .name { font-weight: 600; color: #fff; }
+  .m2 .row .name { color: rgba(255,255,255,0.82); }
+  .m2 .row .name.unnamed { color: var(--text-unnamed); font-style: italic; }
+
+  /* ============================================================
+     Mockup 3 — dot indicator on right
+     ============================================================ */
+  .m3 .row {
+    display: grid;
+    grid-template-columns: 32px 1fr 20px;
+    align-items: center;
+    padding: 8px 18px 8px 18px;
+    font-size: 15px;
+    column-gap: 4px;
+  }
+  .m3 .row .idx { color: var(--idx); }
+  .m3 .row .dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; justify-self: end; }
+  .m3 .row.current .dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .m3 .row.current .name { color: #fff; font-weight: 500; }
+  .m3 .row .name { color: rgba(255,255,255,0.82); }
+  .m3 .row .name.unnamed { color: var(--text-unnamed); font-style: italic; }
+
+  /* ============================================================
+     Mockup 4 — current item large, others small
+     ============================================================ */
+  .m4 { min-width: 260px; padding: 12px 0; }
+  .m4 .row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    padding: 4px 24px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+  }
+  .m4 .row .idx { color: rgba(255,255,255,0.40); }
+  .m4 .row .name.unnamed { color: rgba(255,255,255,0.30); font-style: italic; }
+  .m4 .big {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    align-items: center;
+    padding: 14px 24px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+  .m4 .big .idx {
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+  }
+  .m4 .big .name { text-align: left; }
+
+  /* ============================================================
+     Mockup 5 — pill per row
+     ============================================================ */
+  .m5 { padding: 10px 12px; min-width: 230px; }
+  .m5 .pill {
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 7px 16px;
+    margin: 5px 0;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    font-size: 14px;
+    color: rgba(255,255,255,0.82);
+  }
+  .m5 .pill .idx { color: var(--idx); }
+  .m5 .pill .name.unnamed { color: var(--text-unnamed); font-style: italic; }
+  .m5 .pill.current {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .m5 .pill.current .idx { color: rgba(255,255,255,0.9); }
+  .m5 .pill.current .name { font-weight: 600; }
+
+  .footer {
+    margin-top: 56px;
+    padding: 24px;
+    background: #242428;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #b0b0b0;
+  }
+  .footer strong { color: #eaeaea; }
+  .footer ul { margin: 8px 0 0 20px; padding: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>SpacesSync popup mockups</h1>
+  <p class="sub">Simulated at roughly actual size. Dark translucent HUD over a desktop background. Current space = index 3 ("Browser"). Space 5 is unnamed.</p>
+
+  <div class="grid">
+
+    <!-- ===== Mockup 1 ===== -->
+    <div class="mockup">
+      <h2>Mockup 1 — highlight band</h2>
+      <p class="desc">Full-width accent band on current row. Closest to native macOS Spaces UI. Clean, obvious.</p>
+      <div class="stage">
+        <div class="panel m1">
+          <div class="row"><span class="idx">1</span><span class="name">Code</span></div>
+          <div class="row"><span class="idx">2</span><span class="name">Email</span></div>
+          <div class="row current"><span class="idx">3</span><span class="name">Browser</span></div>
+          <div class="row"><span class="idx">4</span><span class="name">Chat</span></div>
+          <div class="row"><span class="idx">5</span><span class="name unnamed">Space 5</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Mockup 2 ===== -->
+    <div class="mockup">
+      <h2>Mockup 2 — chevron marker</h2>
+      <p class="desc">No index column, chevron on current row. Most minimal. Loses index visibility.</p>
+      <div class="stage">
+        <div class="panel m2">
+          <div class="row"><span class="chev">▶</span><span class="name">Code</span></div>
+          <div class="row"><span class="chev">▶</span><span class="name">Email</span></div>
+          <div class="row current"><span class="chev">▶</span><span class="name">Browser</span></div>
+          <div class="row"><span class="chev">▶</span><span class="name">Chat</span></div>
+          <div class="row"><span class="chev">▶</span><span class="name unnamed">Space 5</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Mockup 3 ===== -->
+    <div class="mockup">
+      <h2>Mockup 3 — dot indicator</h2>
+      <p class="desc">Understated — colored dot on the right edge of current row. No highlight band.</p>
+      <div class="stage">
+        <div class="panel m3">
+          <div class="row"><span class="idx">1</span><span class="name">Code</span><span class="dot"></span></div>
+          <div class="row"><span class="idx">2</span><span class="name">Email</span><span class="dot"></span></div>
+          <div class="row current"><span class="idx">3</span><span class="name">Browser</span><span class="dot"></span></div>
+          <div class="row"><span class="idx">4</span><span class="name">Chat</span><span class="dot"></span></div>
+          <div class="row"><span class="idx">5</span><span class="name unnamed">Space 5</span><span class="dot"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Mockup 4 ===== -->
+    <div class="mockup">
+      <h2>Mockup 4 — big current</h2>
+      <p class="desc">Current space prominent, others small context. Most dramatic. Reads fast even from a distance.</p>
+      <div class="stage">
+        <div class="panel m4">
+          <div class="row"><span class="idx">1</span><span class="name">Code</span></div>
+          <div class="row"><span class="idx">2</span><span class="name">Email</span></div>
+          <div class="big"><span class="idx">3</span><span class="name">BROWSER</span></div>
+          <div class="row"><span class="idx">4</span><span class="name">Chat</span></div>
+          <div class="row"><span class="idx">5</span><span class="name unnamed">Space 5</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Mockup 5 ===== -->
+    <div class="mockup">
+      <h2>Mockup 5 — pills</h2>
+      <p class="desc">Each row is its own pill; current is filled. More visual weight, possibly busy.</p>
+      <div class="stage">
+        <div class="panel m5">
+          <div class="pill"><span class="idx">1</span><span class="name">Code</span></div>
+          <div class="pill"><span class="idx">2</span><span class="name">Email</span></div>
+          <div class="pill current"><span class="idx">3</span><span class="name">Browser</span></div>
+          <div class="pill"><span class="idx">4</span><span class="name">Chat</span></div>
+          <div class="pill"><span class="idx">5</span><span class="name unnamed">Space 5</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <strong>Rendering notes for Hammerspoon implementation:</strong>
+    <ul>
+      <li>All mockups render in <code>hs.canvas</code> — rectangles, rounded corners, text elements.</li>
+      <li>Translucent background with blur is tricky in canvas; likely fall back to solid dark gray at 92% opacity (very close visually).</li>
+      <li>Unnamed rows ("Space N") use reduced alpha + italic for visual distinction.</li>
+      <li>Font: system default (San Francisco). Tabular numerals for the index column.</li>
+      <li>Position: center-top of trigger monitor, ~80px below menubar.</li>
+      <li>Width: fit longest row; min 220px.</li>
+      <li>Timeout: 2s, no animation in v1 (adding fade requires canvas transform tricks).</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
