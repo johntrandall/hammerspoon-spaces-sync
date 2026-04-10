@@ -66,28 +66,60 @@ One user reports Hammerspoon "works fine on Tahoe" (discussion #3805, general st
 - **Amethyst** — also affected by Sequoia changes
 - **BetterTouchTool** — mentioned as possible replacement for some workflows
 
-## Performance: Instant Space Switching
+## Performance: Instant Space Switching — NOT VIABLE for our use case
+
+### Summary
+
+**Neither fast-switch technique targets a specific non-focused monitor**, which is exactly what our sync engine needs. `hs.spaces.gotoSpace(spaceID)` remains the only viable mechanism for us because the space ID implicitly targets the correct display.
 
 ### Discussion #3823: window:focus() trick
 
 Cache a window reference per space. Instead of `gotoSpace(spaceID)`, call `window:focus()` on a window known to be in the target space. The focus call triggers an instant space switch without the Mission Control animation.
 
-**Limitations:**
-- Only works for spaces that have windows — empty spaces require fallback to `gotoSpace()`
-- Need to maintain a window-per-space cache (updated on every watcher fire)
-- Unclear if this works for switching a non-focused monitor's space (our use case)
+**Author:** itsfarseen (Sep 2025). Open, no replies.
 
-### Issue #3850: InstantSpaceSwitcher
+**Why it doesn't work for us:**
+- `window:focus()` steals keyboard focus to that window's monitor. Our use case is silently syncing *other* monitors in the background — we don't want to move focus.
+- Empty spaces still need `gotoSpace()` fallback with the animation
+- The cache can go stale if windows are closed/moved without revisiting the space
+- Good for "switch my own monitor fast", bad for "sync other monitors silently"
 
-[jurplel/InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) (599 stars) uses private `CGSConnection` / `CGSManagedDisplaySetCurrentSpace` APIs for zero-animation switching. Written in Swift.
+### Issue #3850 / jurplel/InstantSpaceSwitcher
 
-**Key questions for our use case:**
-- Can it target a specific monitor (not just the focused one)?
-- Does it work on Sequoia/Tahoe?
-- Could we shell out to it from our Spoon?
-- Does it require SIP disabled?
+InstantSpaceSwitcher posts synthetic trackpad swipe gestures (`kCGSEventGesture` + `kCGSEventDockControl`) via `CGEventTap` to trick macOS into switching spaces without animation.
 
-(Pending: instant-switch research agent still running with deeper analysis)
+**Why it doesn't work for us:**
+- Posts events to `kCGSessionEventTap` — macOS routes them to whichever display is "active" (cursor position or menu bar display)
+- No way to target a specific non-focused display
+- Would require moving the cursor to each target monitor, posting gestures, moving cursor back — fragile and disruptive
+- `iss_get_space_info()` reads per-display but `iss_post_switch_gesture()` doesn't accept a display parameter
+- The author themselves noted: "it cannot replace hs.spaces.gotoSpace"
+
+**Other caveats:**
+- Doesn't work during Mission Control or App Exposé
+- Multi-step switches require N sequential gestures (unclear if rapid ones are reliable)
+- Requires Accessibility permissions (creates event tap)
+- Uses private CGS APIs and undocumented `CGEventField` constants
+
+### PR #3859 (mogenson, Mar 2026)
+
+Open PR to Hammerspoon adding the undocumented `CGEventField` constants and fixing `setProperty()` to allow the gesture technique from pure Lua. Would enable experimentation but doesn't solve the per-display targeting problem.
+
+### Comparison table
+
+| Aspect | `gotoSpace(spaceID)` | window:focus() #3823 | ISS gesture #3850 |
+|---|---|---|---|
+| Targets specific non-focused display | Yes (via space ID) | No (focuses that window) | No (active display only) |
+| No animation | No (slide animation) | Yes (instant) | Yes (instant) |
+| Works on empty spaces | Yes | No (falls back) | Yes |
+| Doesn't steal focus | Yes | No | Unknown |
+| SIP required | No | No | No |
+| Private APIs | Yes (via hs.spaces) | No (standard HS) | Yes (CGS + undoc CGEvent fields) |
+| Suitable for our multi-monitor sync | Yes (only option) | No | No |
+
+### Bottom line
+
+`hs.spaces.gotoSpace()` is the only mechanism that accepts a space ID that implicitly targets the correct display. The 0.3s delay and Mission Control animation are currently unavoidable for our use case. The only thing that would change this is an undocumented private API that takes both a display ID and a space index — no such API is known to exist.
 
 ## GC, Timers, and Watchers
 
