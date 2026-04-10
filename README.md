@@ -28,9 +28,18 @@ spoon.SpoonInstall:andUse("SpacesSync", {
   start = true,
   config = {
     syncGroups = { {1, 2} },
+    -- Optional: seed Space names. You can also rename live via ⌃⌥⌘R.
+    -- Names are persisted via hs.settings, so they survive reloads.
+    spaceNames = {
+      [1] = "Code",
+      [2] = "Email",
+      [3] = "Browser",
+    },
   },
   hotkeys = {
-    toggle = {{"ctrl", "alt", "cmd"}, "Y"},
+    toggle      = {{"ctrl", "alt", "cmd"}, "Y"},
+    showNames   = {{"ctrl", "alt", "cmd"}, "N"},
+    renameSpace = {{"ctrl", "alt", "cmd"}, "R"},
   },
 })
 ```
@@ -68,6 +77,14 @@ hs.loadSpoon("SpacesSync")
 
 spoon.SpacesSync.syncGroups = {
   { 2, 3, 4 },    -- monitors 2, 3, 4 sync together; monitor 1 is independent
+}
+
+-- Optional: seed Space names. You can also rename live via the renameSpace
+-- hotkey (⌃⌥⌘R by default). Names are persisted via hs.settings.
+spoon.SpacesSync.spaceNames = {
+  [1] = "Code",
+  [2] = "Email",
+  [3] = "Browser",
 }
 
 spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)
