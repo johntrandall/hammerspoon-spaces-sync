@@ -62,9 +62,8 @@ Set properties on `spoon.SpacesSync` before calling `:start()`:
 hs.loadSpoon("SpacesSync")
 
 spoon.SpacesSync.syncGroups = {
-  { 2, 3, 4 },    -- right three monitors sync together
+  { 2, 3, 4 },    -- monitors 2, 3, 4 sync together; monitor 1 is independent
 }
-spoon.SpacesSync.logger.setLogLevel('debug')  -- verbose logging
 
 spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)
 spoon.SpacesSync:start()
