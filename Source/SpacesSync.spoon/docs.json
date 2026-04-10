@@ -115,21 +115,20 @@
         ]
       },
       {
-        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\nNames are persisted via `hs.settings` and survive Hammerspoon reloads.\nNames you set on this table before first use take precedence over\npersisted values for the same index; persisted values fill in the rest.\n\nDefault value: `{}`\n\nExample:\n```lua\nspoon.SpacesSync.spaceNames = { [1] = \"Code\", [2] = \"Email\", [3] = \"Browser\" }\n```",
+        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues and create the illusion of config drift. Use\n`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or\nclear names; those changes persist across Hammerspoon reloads.\n\nUnnamed indices render as \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "stripped_doc" : [
           "Table mapping Space index (number) to name (string). Shared across all",
           "sync groups — index N refers to the Nth Space on any monitor.",
           "",
-          "Names are persisted via `hs.settings` and survive Hammerspoon reloads.",
-          "Names you set on this table before first use take precedence over",
-          "persisted values for the same index; persisted values fill in the rest.",
+          "**This table is populated from `hs.settings` at runtime. Do not assign",
+          "names here in your config** — they will be overwritten by persisted",
+          "values and create the illusion of config drift. Use",
+          "`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or",
+          "clear names; those changes persist across Hammerspoon reloads.",
           "",
-          "Default value: `{}`",
+          "Unnamed indices render as \"Space N\" in the popup.",
           "",
-          "Example:",
-          "```lua",
-          "spoon.SpacesSync.spaceNames = { [1] = \"Code\", [2] = \"Email\", [3] = \"Browser\" }",
-          "```"
+          "Default value: `{}` (filled in from `hs.settings` on first use)"
         ],
         "def" : "SpacesSync.spaceNames",
         "desc" : "Table mapping Space index (number) to name (string). Shared across all",
@@ -530,21 +529,20 @@
         ]
       },
       {
-        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\nNames are persisted via `hs.settings` and survive Hammerspoon reloads.\nNames you set on this table before first use take precedence over\npersisted values for the same index; persisted values fill in the rest.\n\nDefault value: `{}`\n\nExample:\n```lua\nspoon.SpacesSync.spaceNames = { [1] = \"Code\", [2] = \"Email\", [3] = \"Browser\" }\n```",
+        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues and create the illusion of config drift. Use\n`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or\nclear names; those changes persist across Hammerspoon reloads.\n\nUnnamed indices render as \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "stripped_doc" : [
           "Table mapping Space index (number) to name (string). Shared across all",
           "sync groups — index N refers to the Nth Space on any monitor.",
           "",
-          "Names are persisted via `hs.settings` and survive Hammerspoon reloads.",
-          "Names you set on this table before first use take precedence over",
-          "persisted values for the same index; persisted values fill in the rest.",
+          "**This table is populated from `hs.settings` at runtime. Do not assign",
+          "names here in your config** — they will be overwritten by persisted",
+          "values and create the illusion of config drift. Use",
+          "`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or",
+          "clear names; those changes persist across Hammerspoon reloads.",
           "",
-          "Default value: `{}`",
+          "Unnamed indices render as \"Space N\" in the popup.",
           "",
-          "Example:",
-          "```lua",
-          "spoon.SpacesSync.spaceNames = { [1] = \"Code\", [2] = \"Email\", [3] = \"Browser\" }",
-          "```"
+          "Default value: `{}` (filled in from `hs.settings` on first use)"
         ],
         "def" : "SpacesSync.spaceNames",
         "desc" : "Table mapping Space index (number) to name (string). Shared across all",

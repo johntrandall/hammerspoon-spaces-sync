@@ -28,13 +28,6 @@ spoon.SpoonInstall:andUse("SpacesSync", {
   start = true,
   config = {
     syncGroups = { {1, 2} },
-    -- Optional: seed Space names. You can also rename live via ⌃⌥⌘R.
-    -- Names are persisted via hs.settings, so they survive reloads.
-    spaceNames = {
-      [1] = "Code",
-      [2] = "Email",
-      [3] = "Browser",
-    },
   },
   hotkeys = {
     toggle      = {{"ctrl", "alt", "cmd"}, "Y"},
@@ -79,17 +72,11 @@ spoon.SpacesSync.syncGroups = {
   { 2, 3, 4 },    -- monitors 2, 3, 4 sync together; monitor 1 is independent
 }
 
--- Optional: seed Space names. You can also rename live via the renameSpace
--- hotkey (⌃⌥⌘R by default). Names are persisted via hs.settings.
-spoon.SpacesSync.spaceNames = {
-  [1] = "Code",
-  [2] = "Email",
-  [3] = "Browser",
-}
-
 spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)
 spoon.SpacesSync:start()
 ```
+
+Space names are set at runtime using the `renameSpace` hotkey (⌃⌥⌘R by default) — see [Space names](#space-names) below. Do not set `spaceNames` in your config; it is populated from `hs.settings` at runtime.
 
 ### Options
 
@@ -98,7 +85,7 @@ spoon.SpacesSync:start()
 | `syncGroups`      | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers.                                       |
 | `switchDelay`     | `0.3`        | Seconds between each `gotoSpace` call.                                                                       |
 | `debounceSeconds` | `0.8`        | Seconds after sync before watcher re-enables.                                                                |
-| `spaceNames`      | `{}`         | Table mapping Space index → name. Persisted via `hs.settings`. See [Space names](#space-names).              |
+| `spaceNames`      | `{}`         | Runtime name map (read-only from config). Populated from `hs.settings`; set via ⌃⌥⌘R. See [Space names](#space-names). |
 | `popupDuration`   | `2`          | Seconds the space-names popup stays visible.                                                                 |
 | `logger`          | `hs.logger` at `info` | Logger object. Set level with `spoon.SpacesSync.logger.setLogLevel('debug')`.                       |
 
@@ -150,15 +137,7 @@ Every time you switch Spaces, a popup appears on the trigger monitor listing all
 
 **Show the popup on demand:** press the `showNames` hotkey (`⌃⌥⌘N` by default). The popup appears on the monitor under the mouse cursor, highlighting its currently active Space.
 
-**Seed names from your config** (optional — they'll be overwritten as soon as you rename):
-
-```lua
-spoon.SpacesSync.spaceNames = {
-  [1] = "Code",
-  [2] = "Email",
-  [3] = "Browser",
-}
-```
+Names are set entirely at runtime via the rename hotkey and stored in `hs.settings`. Do not assign `spoon.SpacesSync.spaceNames` in your config — that table is populated from persisted storage on first use, and any config-time assignments are discarded.
 
 Names for indices beyond the current monitor's Space count are kept in storage but hidden from the popup. Unnamed indices render as dim italic "Space N".
 

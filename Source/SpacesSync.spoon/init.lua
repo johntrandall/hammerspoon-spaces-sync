@@ -117,16 +117,15 @@ obj.debounceSeconds = 0.8
 --- Table mapping Space index (number) to name (string). Shared across all
 --- sync groups — index N refers to the Nth Space on any monitor.
 ---
---- Names are persisted via `hs.settings` and survive Hammerspoon reloads.
---- Names you set on this table before first use take precedence over
---- persisted values for the same index; persisted values fill in the rest.
+--- **This table is populated from `hs.settings` at runtime. Do not assign
+--- names here in your config** — they will be overwritten by persisted
+--- values and create the illusion of config drift. Use
+--- `:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or
+--- clear names; those changes persist across Hammerspoon reloads.
 ---
---- Default value: `{}`
+--- Unnamed indices render as "Space N" in the popup.
 ---
---- Example:
---- ```lua
---- spoon.SpacesSync.spaceNames = { [1] = "Code", [2] = "Email", [3] = "Browser" }
---- ```
+--- Default value: `{}` (filled in from `hs.settings` on first use)
 obj.spaceNames = {}
 
 --- SpacesSync.popupDuration
@@ -304,15 +303,19 @@ local function saveSpaceNames()
   hs.settings.set(SETTINGS_KEY, toStore)
 end
 
--- Merge persisted names with any user-supplied defaults. User-supplied wins
--- on conflict; persisted fills in the rest. Idempotent.
+-- Populate obj.spaceNames from hs.settings on first use. Anything the user
+-- put in obj.spaceNames via their config is discarded — persistence is the
+-- single source of truth for names. Idempotent.
 local function ensureNamesLoaded()
   if namesLoaded then return end
+  -- Clear anything the user may have set in init.lua so there is no
+  -- ambiguity about precedence.
+  for k in pairs(obj.spaceNames) do
+    obj.spaceNames[k] = nil
+  end
   local persisted = loadSpaceNames()
   for k, v in pairs(persisted) do
-    if obj.spaceNames[k] == nil then
-      obj.spaceNames[k] = v
-    end
+    obj.spaceNames[k] = v
   end
   namesLoaded = true
 end
