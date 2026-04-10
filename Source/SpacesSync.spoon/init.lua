@@ -136,6 +136,14 @@ obj.spaceNames = {}
 --- Default value: `2`
 obj.popupDuration = 2
 
+--- SpacesSync.statusDuration
+--- Variable
+--- How long (in seconds) the status HUD ("SpacesSync: ON" / "SpacesSync:
+--- OFF") stays on screen when starting, stopping, or toggling the Spoon.
+---
+--- Default value: `3`
+obj.statusDuration = 3
+
 --- SpacesSync.defaultHotkeys
 --- Variable
 --- Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:
@@ -549,6 +557,79 @@ showPopup = function(triggerUUID, highlightedIndex)
   end
   buildPopupCanvas(triggerUUID, highlightedIndex)
   popupState.timer = hs.timer.doAfter(obj.popupDuration, hidePopup)
+end
+
+-- Single-line status HUD ("SpacesSync: ON" / "SpacesSync: OFF") shown on
+-- start/stop/toggle. Matches the popup's visual language (dark rounded
+-- panel, HUD window level, center-top of main screen) but renders a single
+-- centered bold line. Reuses popupState so that a status HUD cleanly
+-- supersedes any visible popup or picker.
+--
+-- Callers inside `:start()` must defer with `hs.timer.doAfter(0, ...)` — see
+-- `dev-docs/hammerspoon-and-spaces-quirks.md` for the init-time canvas race.
+local STATUS_PAD_X = 32
+local STATUS_PAD_Y = 18
+local STATUS_FONT_SIZE = 22
+local STATUS_FONT = "Helvetica-Bold"
+
+local function showStatusHUD(text)
+  -- Clean up anything currently on screen: an in-progress picker, a passive
+  -- popup, or an earlier status HUD. pickerDismiss() is idempotent and
+  -- also calls hidePopup() internally, so it covers all three cases.
+  pickerDismiss()
+
+  local screen = hs.screen.mainScreen()
+  if not screen then return end
+
+  local textWidth = measureTextWidth(text, STATUS_FONT, STATUS_FONT_SIZE)
+  local panelWidth = math.max(
+    POPUP_MIN_WIDTH,
+    math.ceil(textWidth + STATUS_PAD_X * 2)
+  )
+  local panelHeight = math.ceil(STATUS_FONT_SIZE + STATUS_PAD_Y * 2)
+
+  local sf = screen:frame()
+  local x = math.floor(sf.x + (sf.w - panelWidth) / 2)
+  local y = math.floor(sf.y + POPUP_MARGIN_TOP)
+
+  local c = hs.canvas.new({ x = x, y = y, w = panelWidth, h = panelHeight })
+  c:level(hs.canvas.windowLevels.overlay)
+  c:behavior({ "canJoinAllSpaces", "stationary" })
+
+  c:appendElements({
+    type = "rectangle",
+    action = "fill",
+    fillColor = COLOR_PANEL_FILL,
+    roundedRectRadii = { xRadius = POPUP_CORNER_RADIUS, yRadius = POPUP_CORNER_RADIUS },
+    frame = { x = 0, y = 0, w = panelWidth, h = panelHeight },
+  })
+  c:appendElements({
+    type = "rectangle",
+    action = "stroke",
+    strokeColor = COLOR_PANEL_STROKE,
+    strokeWidth = 1,
+    roundedRectRadii = { xRadius = POPUP_CORNER_RADIUS, yRadius = POPUP_CORNER_RADIUS },
+    frame = { x = 0, y = 0, w = panelWidth, h = panelHeight },
+  })
+
+  c:appendElements({
+    type = "text",
+    text = hs.styledtext.new(text, {
+      font = { name = STATUS_FONT, size = STATUS_FONT_SIZE },
+      color = COLOR_BIG_NAME,
+      paragraphStyle = { alignment = "center" },
+    }),
+    frame = {
+      x = STATUS_PAD_X,
+      y = STATUS_PAD_Y - 2,
+      w = panelWidth - STATUS_PAD_X * 2,
+      h = STATUS_FONT_SIZE + 6,
+    },
+  })
+
+  c:show()
+  popupState.canvas = c
+  popupState.timer = hs.timer.doAfter(obj.statusDuration, hidePopup)
 end
 
 -- ============================================================================
@@ -1065,7 +1146,13 @@ function obj:start()
   state.syncInProgress = false
   state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
   setupWatcher()
-  hs.alert.show("SpacesSync: ON")
+  -- Defer the status HUD to the next runloop tick. When :start() is called
+  -- from init.lua (e.g. after hs.reload()), Hammerspoon has not yet finished
+  -- applicationDidFinishLaunching — canvases created synchronously at this
+  -- point are silently dropped. hs.timer.doAfter(0) yields to the next
+  -- runloop iteration, which is the canonical Hammerspoon idiom for
+  -- "let the window server settle". See dev-docs/hammerspoon-and-spaces-quirks.md.
+  hs.timer.doAfter(0, function() showStatusHUD("SpacesSync: ON") end)
   obj.logger.i("Enabled")
 
   return self
@@ -1092,11 +1179,10 @@ function obj:stop()
     state.debounceTimer:stop()
     state.debounceTimer = nil
   end
-  -- pickerDismiss() is idempotent — cleans up the picker eventtap if the
-  -- picker is active, and also clears the canvas/timer. Safer than just
-  -- hidePopup() which would leave a running eventtap in picker mode.
-  pickerDismiss()
-  hs.alert.show("SpacesSync: OFF")
+  -- showStatusHUD() internally calls pickerDismiss() which is idempotent
+  -- and also clears any canvas/timer. Safe to call without first hiding
+  -- any prior popup or picker.
+  showStatusHUD("SpacesSync: OFF")
   obj.logger.i("Disabled")
   return self
 end

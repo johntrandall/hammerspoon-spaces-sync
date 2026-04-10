@@ -173,6 +173,29 @@
 
         ],
         "stripped_doc" : [
+          "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
+          "OFF\") stays on screen when starting, stopping, or toggling the Spoon.",
+          "",
+          "Default value: `3`"
+        ],
+        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
+        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync.statusDuration",
+        "type" : "Variable",
+        "returns" : [
+
+        ],
+        "def" : "SpacesSync.statusDuration",
+        "name" : "statusDuration"
+      },
+      {
+        "parameters" : [
+
+        ],
+        "stripped_doc" : [
           "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:",
           "",
           "```lua",
@@ -359,6 +382,29 @@
         ],
         "def" : "SpacesSync.spaceNames",
         "name" : "spaceNames"
+      },
+      {
+        "parameters" : [
+
+        ],
+        "stripped_doc" : [
+          "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
+          "OFF\") stays on screen when starting, stopping, or toggling the Spoon.",
+          "",
+          "Default value: `3`"
+        ],
+        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
+        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync.statusDuration",
+        "type" : "Variable",
+        "returns" : [
+
+        ],
+        "def" : "SpacesSync.statusDuration",
+        "name" : "statusDuration"
       },
       {
         "parameters" : [

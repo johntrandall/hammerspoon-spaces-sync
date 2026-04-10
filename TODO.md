@@ -28,19 +28,11 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 ## Picker polish
 
-- [ ] **Evaluate picker canvas flicker** — the interactive picker (⌃⌥⌘N) rebuilds the entire `hs.canvas` on each arrow keypress via `buildPopupCanvas()`. This is the simple implementation. If rapid navigation feels laggy or visually jarring in practice, switch to in-place element mutation (`canvas[i].text`, `canvas[i].frame`) and a uniform row-height design (so the panel doesn't need to resize between selections). Test by holding Down and watching for flicker.
+- [x] **Evaluate picker canvas flicker** — **Verified (2026-04-10):** fluid, no flicker observed during interactive navigation. Full-canvas rebuild in `buildPopupCanvas()` is fast enough in practice; the in-place-mutation refactor is not warranted.
 
-## Known Issues
+## Upstream requests
 
-- [ ] **"SpacesSync: ON" status display invisible after `hs.reload()`** — The existing `hs.alert.show("SpacesSync: ON")` in `:start()` fires during init.lua but is either invisible, too brief, or gets dropped because Hammerspoon runs init.lua synchronously *before* NSApplication finishes its first `applicationDidFinishLaunching` cycle. UI created at that moment races the window server handshake.
-
-  **Root cause (Verified via source-level research):** Hammerspoon has no `startupCallback` / `readyCallback` / "config loaded" event. Only `hs.shutdownCallback` exists. Confirmed by reading `MJLua.m` and `extensions/_coresetup/_coresetup.lua` in `Hammerspoon/hammerspoon`.
-
-  **Proposed fix (Observed idiom in official Spoons, not yet tested in this repo):**
-  1. Replace `hs.alert.show("SpacesSync: ON")` with a canvas-based status HUD matching the popup's visual style (dark rounded panel, HUD level, 3s duration).
-  2. Defer the call via `hs.timer.doAfter(0, function() showStatusHUD("SpacesSync: ON") end)`. A zero-delay timer yields to the next runloop tick, which is the canonical Hammerspoon idiom for "let the window server settle" (see TurboBoost, MicMute, AClock, FadeLogo Spoons). **Not** `doAfter(0.1)` — that's magic-number padding.
-  3. Update `dev-docs/hammerspoon-and-spaces-quirks.md` with a new section documenting the init-time canvas visibility race and the `doAfter(0)` workaround.
-  4. (Optional) File an upstream feature request for `hs.startupCallback` as a symmetric counterpart to `hs.shutdownCallback`. No existing issue today.
+- [ ] **File issue for `hs.startupCallback`** (optional, Low priority) — Hammerspoon has `hs.shutdownCallback` but no symmetric startup hook. Adding one would eliminate the `doAfter(0)` workaround documented in `dev-docs/hammerspoon-and-spaces-quirks.md`. Clean one-function ask against `MJLua.m`. No existing issue today.
 
 ## Features
 
