@@ -22,7 +22,7 @@ obj.__index = obj
 
 -- Metadata
 obj.name = "SpacesSync"
-obj.version = "0.1"
+obj.version = "0.2"
 obj.author = "John Randall <john@johnrandall.com>"
 obj.homepage = "https://github.com/johntrandall/hammerspoon-spaces-sync"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
