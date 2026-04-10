@@ -11,9 +11,11 @@
     ],
     "Variable" : [
       {
+        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "parameters" : [
 
         ],
+        "name" : "logger",
         "stripped_doc" : [
           "Logger object used within the Spoon. Set the log level to control verbosity.",
           "",
@@ -26,8 +28,6 @@
           "spoon.SpacesSync.logger.setLogLevel('debug')",
           "```"
         ],
-        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity.",
-        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "notes" : [
 
         ],
@@ -37,12 +37,14 @@
 
         ],
         "def" : "SpacesSync.logger",
-        "name" : "logger"
+        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity."
       },
       {
+        "doc" : "List of sync groups. Each group is a list of monitor position numbers.\nPositions are assigned in reading order (left-to-right, top-to-bottom).\nMonitors not in any group are independent.\n\nDefault value: `{ {1, 2} }`\n\nExamples:\n * `{ {1, 2} }` — monitors 1 and 2 sync together\n * `{ {1, 2}, {3, 4} }` — two independent pairs\n * `{ {1, 2, 3} }` — three monitors sync together",
         "parameters" : [
 
         ],
+        "name" : "syncGroups",
         "stripped_doc" : [
           "List of sync groups. Each group is a list of monitor position numbers.",
           "Positions are assigned in reading order (left-to-right, top-to-bottom).",
@@ -55,8 +57,6 @@
           " * `{ {1, 2}, {3, 4} }` — two independent pairs",
           " * `{ {1, 2, 3} }` — three monitors sync together"
         ],
-        "desc" : "List of sync groups. Each group is a list of monitor position numbers.",
-        "doc" : "List of sync groups. Each group is a list of monitor position numbers.\nPositions are assigned in reading order (left-to-right, top-to-bottom).\nMonitors not in any group are independent.\n\nDefault value: `{ {1, 2} }`\n\nExamples:\n * `{ {1, 2} }` — monitors 1 and 2 sync together\n * `{ {1, 2}, {3, 4} }` — two independent pairs\n * `{ {1, 2, 3} }` — three monitors sync together",
         "notes" : [
 
         ],
@@ -66,20 +66,20 @@
 
         ],
         "def" : "SpacesSync.syncGroups",
-        "name" : "syncGroups"
+        "desc" : "List of sync groups. Each group is a list of monitor position numbers."
       },
       {
+        "doc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.\nmacOS silently drops rapid back-to-back space switches.\n\nDefault value: `0.3`",
         "parameters" : [
 
         ],
+        "name" : "switchDelay",
         "stripped_doc" : [
           "Delay in seconds between each `hs.spaces.gotoSpace()` call.",
           "macOS silently drops rapid back-to-back space switches.",
           "",
           "Default value: `0.3`"
         ],
-        "desc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.",
-        "doc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.\nmacOS silently drops rapid back-to-back space switches.\n\nDefault value: `0.3`",
         "notes" : [
 
         ],
@@ -89,20 +89,20 @@
 
         ],
         "def" : "SpacesSync.switchDelay",
-        "name" : "switchDelay"
+        "desc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call."
       },
       {
+        "doc" : "Seconds to wait after all switches complete before re-enabling the watcher.\nPrevents the watcher from reacting to our own programmatic space switches.\n\nDefault value: `0.8`",
         "parameters" : [
 
         ],
+        "name" : "debounceSeconds",
         "stripped_doc" : [
           "Seconds to wait after all switches complete before re-enabling the watcher.",
           "Prevents the watcher from reacting to our own programmatic space switches.",
           "",
           "Default value: `0.8`"
         ],
-        "desc" : "Seconds to wait after all switches complete before re-enabling the watcher.",
-        "doc" : "Seconds to wait after all switches complete before re-enabling the watcher.\nPrevents the watcher from reacting to our own programmatic space switches.\n\nDefault value: `0.8`",
         "notes" : [
 
         ],
@@ -112,28 +112,40 @@
 
         ],
         "def" : "SpacesSync.debounceSeconds",
-        "name" : "debounceSeconds"
+        "desc" : "Seconds to wait after all switches complete before re-enabling the watcher."
       },
       {
+        "doc" : "Nested table of Space names, keyed by name group then by Space index:\n\n```lua\n{\n  [\"1\"]     = { [1] = \"Notes\", [2] = \"Music\" },              -- independent monitor 1\n  [\"2,3,4\"] = { [1] = \"Code\",  [2] = \"Email\", [3] = \"Browser\" }, -- sync group {2,3,4}\n}\n```\n\nA monitor's **name group** is the sync group containing its position\n(sorted, comma-joined — e.g. `\"2,3,4\"`), or an implicit group-of-one\n(just its position, e.g. `\"1\"`) for independent monitors. Names live\ninside the group so independent monitors and different sync groups\ndon't share a flat global namespace.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues. Use `:renameCurrentSpace()` (bound to the `renameSpace`\nhotkey) to set or clear names; those changes persist across\nHammerspoon reloads.\n\nUnnamed indices render as dim italic \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "parameters" : [
 
         ],
+        "name" : "spaceNames",
         "stripped_doc" : [
-          "Table mapping Space index (number) to name (string). Shared across all",
-          "sync groups — index N refers to the Nth Space on any monitor.",
+          "Nested table of Space names, keyed by name group then by Space index:",
+          "",
+          "```lua",
+          "{",
+          "  [\"1\"]     = { [1] = \"Notes\", [2] = \"Music\" },              -- independent monitor 1",
+          "  [\"2,3,4\"] = { [1] = \"Code\",  [2] = \"Email\", [3] = \"Browser\" }, -- sync group {2,3,4}",
+          "}",
+          "```",
+          "",
+          "A monitor's **name group** is the sync group containing its position",
+          "(sorted, comma-joined — e.g. `\"2,3,4\"`), or an implicit group-of-one",
+          "(just its position, e.g. `\"1\"`) for independent monitors. Names live",
+          "inside the group so independent monitors and different sync groups",
+          "don't share a flat global namespace.",
           "",
           "**This table is populated from `hs.settings` at runtime. Do not assign",
           "names here in your config** — they will be overwritten by persisted",
-          "values and create the illusion of config drift. Use",
-          "`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or",
-          "clear names; those changes persist across Hammerspoon reloads.",
+          "values. Use `:renameCurrentSpace()` (bound to the `renameSpace`",
+          "hotkey) to set or clear names; those changes persist across",
+          "Hammerspoon reloads.",
           "",
-          "Unnamed indices render as \"Space N\" in the popup.",
+          "Unnamed indices render as dim italic \"Space N\" in the popup.",
           "",
           "Default value: `{}` (filled in from `hs.settings` on first use)"
         ],
-        "desc" : "Table mapping Space index (number) to name (string). Shared across all",
-        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues and create the illusion of config drift. Use\n`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or\nclear names; those changes persist across Hammerspoon reloads.\n\nUnnamed indices render as \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "notes" : [
 
         ],
@@ -143,20 +155,20 @@
 
         ],
         "def" : "SpacesSync.spaceNames",
-        "name" : "spaceNames"
+        "desc" : "Nested table of Space names, keyed by name group then by Space index:"
       },
       {
+        "doc" : "How long (in seconds) the Space-names popup remains visible after a\nSpace switch or explicit `:showNames()` call.\n\nDefault value: `2`",
         "parameters" : [
 
         ],
+        "name" : "popupDuration",
         "stripped_doc" : [
           "How long (in seconds) the Space-names popup remains visible after a",
           "Space switch or explicit `:showNames()` call.",
           "",
           "Default value: `2`"
         ],
-        "desc" : "How long (in seconds) the Space-names popup remains visible after a",
-        "doc" : "How long (in seconds) the Space-names popup remains visible after a\nSpace switch or explicit `:showNames()` call.\n\nDefault value: `2`",
         "notes" : [
 
         ],
@@ -166,20 +178,20 @@
 
         ],
         "def" : "SpacesSync.popupDuration",
-        "name" : "popupDuration"
+        "desc" : "How long (in seconds) the Space-names popup remains visible after a"
       },
       {
+        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
         "parameters" : [
 
         ],
+        "name" : "statusDuration",
         "stripped_doc" : [
           "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
           "OFF\") stays on screen when starting, stopping, or toggling the Spoon.",
           "",
           "Default value: `3`"
         ],
-        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
-        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
         "notes" : [
 
         ],
@@ -189,12 +201,14 @@
 
         ],
         "def" : "SpacesSync.statusDuration",
-        "name" : "statusDuration"
+        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:"
       },
       {
+        "doc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:\n\n```lua\nspoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)\n```\n\nDefault value:\n```lua\n{\n  toggle      = {{\"ctrl\", \"alt\", \"cmd\"}, \"Y\"},\n  showNames   = {{\"ctrl\", \"alt\", \"cmd\"}, \"N\"},\n  renameSpace = {{\"ctrl\", \"alt\", \"cmd\"}, \"R\"},\n}\n```",
         "parameters" : [
 
         ],
+        "name" : "defaultHotkeys",
         "stripped_doc" : [
           "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:",
           "",
@@ -211,8 +225,6 @@
           "}",
           "```"
         ],
-        "desc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:",
-        "doc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:\n\n```lua\nspoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)\n```\n\nDefault value:\n```lua\n{\n  toggle      = {{\"ctrl\", \"alt\", \"cmd\"}, \"Y\"},\n  showNames   = {{\"ctrl\", \"alt\", \"cmd\"}, \"N\"},\n  renameSpace = {{\"ctrl\", \"alt\", \"cmd\"}, \"R\"},\n}\n```",
         "notes" : [
 
         ],
@@ -222,40 +234,252 @@
 
         ],
         "def" : "SpacesSync.defaultHotkeys",
-        "name" : "defaultHotkeys"
+        "desc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:"
       }
     ],
     "stripped_doc" : [
 
     ],
+    "desc" : "Synchronize macOS Spaces across monitors.",
     "Deprecated" : [
 
     ],
     "type" : "Module",
-    "desc" : "Synchronize macOS Spaces across monitors.",
     "Constructor" : [
 
     ],
     "Field" : [
 
     ],
-    "doc" : "Synchronize macOS Spaces across monitors.\n\nWhen you switch Spaces on one monitor, all other monitors in the same\nsync group follow to the matching Space index.\n\nMonitors are identified by position number (reading order:\nleft-to-right, top-to-bottom). Define sync groups as sets of position\nnumbers.\n\n**Requirements:**\n * macOS Sequoia 15.0+ (uses private `hs.spaces` APIs)\n * Two or more monitors with multiple Spaces configured\n * \"Displays have separate Spaces\" must be ON (System Settings > Desktop & Dock > Mission Control)\n * \"Automatically rearrange Spaces based on most recent use\" should be OFF\n\nDownload: [https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/SpacesSync.spoon.zip](https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/SpacesSync.spoon.zip)",
+    "Method" : [
+      {
+        "doc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.\nDoes not start syncing — call `:start()` to begin.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "init",
+        "stripped_doc" : [
+          "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.",
+          "Does not start syncing — call `:start()` to begin.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:init()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:init()",
+        "desc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`."
+      },
+      {
+        "doc" : "Starts Space syncing.\nChecks macOS version and Mission Control settings, builds the monitor\nposition map, and enables the Space watcher.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "start",
+        "stripped_doc" : [
+          "Starts Space syncing.",
+          "Checks macOS version and Mission Control settings, builds the monitor",
+          "position map, and enables the Space watcher.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:start()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:start()",
+        "desc" : "Starts Space syncing."
+      },
+      {
+        "doc" : "Stops Space syncing and cleans up watchers and timers.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "stop",
+        "stripped_doc" : [
+          "Stops Space syncing and cleans up watchers and timers.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:stop()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:stop()",
+        "desc" : "Stops Space syncing and cleans up watchers and timers."
+      },
+      {
+        "doc" : "Toggles Space syncing on or off.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "toggle",
+        "stripped_doc" : [
+          "Toggles Space syncing on or off.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:toggle()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:toggle()",
+        "desc" : "Toggles Space syncing on or off."
+      },
+      {
+        "doc" : "Returns whether Space syncing is currently active.\n\nParameters:\n * None\n\nReturns:\n * A boolean",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "isEnabled",
+        "stripped_doc" : [
+          "Returns whether Space syncing is currently active.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:isEnabled()",
+        "type" : "Method",
+        "returns" : [
+          " * A boolean"
+        ],
+        "def" : "SpacesSync:isEnabled()",
+        "desc" : "Returns whether Space syncing is currently active."
+      },
+      {
+        "doc" : "Opens the interactive Space picker on the monitor under the mouse cursor\n(or the main monitor as fallback). The picker lists every Space on that\nmonitor with its name and lets you navigate:\n\n * **↑ \/ ↓**         — move the selection (wraps)\n * **Return \/ Enter** — switch to the selected Space\n * **Escape**        — dismiss without switching\n * Any other key     — passes through to the focused app\n\nAuto-dismisses after 5 seconds of no keypresses. The post-switch popup\nshown after regular Space switches remains non-interactive.\n\nWorks independently of `:start()` — you can bind this to a hotkey\nwithout enabling sync.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "showNames",
+        "stripped_doc" : [
+          "Opens the interactive Space picker on the monitor under the mouse cursor",
+          "(or the main monitor as fallback). The picker lists every Space on that",
+          "monitor with its name and lets you navigate:",
+          "",
+          " * **↑ \/ ↓**         — move the selection (wraps)",
+          " * **Return \/ Enter** — switch to the selected Space",
+          " * **Escape**        — dismiss without switching",
+          " * Any other key     — passes through to the focused app",
+          "",
+          "Auto-dismisses after 5 seconds of no keypresses. The post-switch popup",
+          "shown after regular Space switches remains non-interactive.",
+          "",
+          "Works independently of `:start()` — you can bind this to a hotkey",
+          "without enabling sync.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:showNames()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:showNames()",
+        "desc" : "Opens the interactive Space picker on the monitor under the mouse cursor"
+      },
+      {
+        "doc" : "Prompts for a new name for the Space currently active on the monitor\nunder the mouse cursor (or the main monitor as fallback).\n\nNames are scoped to the monitor's **name group**: the sync group\ncontaining that monitor's position, or an implicit group-of-one for\nindependent monitors. The rename applies to every monitor in the same\nname group (which, by definition, are showing the same Space index\nanyway because they sync in lockstep). A rename on an independent\nmonitor does NOT affect any sync group, and vice versa.\n\nSubmitting an empty name clears the existing name for that index in\nthat group.\n\nAfter saving, the popup is shown with the renamed space highlighted.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
+        "parameters" : [
+          " * None",
+          ""
+        ],
+        "name" : "renameCurrentSpace",
+        "stripped_doc" : [
+          "Prompts for a new name for the Space currently active on the monitor",
+          "under the mouse cursor (or the main monitor as fallback).",
+          "",
+          "Names are scoped to the monitor's **name group**: the sync group",
+          "containing that monitor's position, or an implicit group-of-one for",
+          "independent monitors. The rename applies to every monitor in the same",
+          "name group (which, by definition, are showing the same Space index",
+          "anyway because they sync in lockstep). A rename on an independent",
+          "monitor does NOT affect any sync group, and vice versa.",
+          "",
+          "Submitting an empty name clears the existing name for that index in",
+          "that group.",
+          "",
+          "After saving, the popup is shown with the renamed space highlighted.",
+          ""
+        ],
+        "notes" : [
+
+        ],
+        "signature" : "SpacesSync:renameCurrentSpace()",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object"
+        ],
+        "def" : "SpacesSync:renameCurrentSpace()",
+        "desc" : "Prompts for a new name for the Space currently active on the monitor"
+      },
+      {
+        "doc" : "Binds hotkeys for SpacesSync.\n\nParameters:\n * mapping - A table containing hotkey modifier\/key details for any of:\n  * toggle - Toggle Space syncing on\/off\n  * showNames - Show the Space-names popup on the current monitor\n  * renameSpace - Rename the currently active Space\n\nReturns:\n * The SpacesSync object\n\nNotes:\n * For a quick setup with defaults, use:\n   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`",
+        "parameters" : [
+          " * mapping - A table containing hotkey modifier\/key details for any of:",
+          "  * toggle - Toggle Space syncing on\/off",
+          "  * showNames - Show the Space-names popup on the current monitor",
+          "  * renameSpace - Rename the currently active Space",
+          ""
+        ],
+        "name" : "bindHotkeys",
+        "stripped_doc" : [
+          "Binds hotkeys for SpacesSync.",
+          ""
+        ],
+        "notes" : [
+          " * For a quick setup with defaults, use:",
+          "   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`"
+        ],
+        "signature" : "SpacesSync:bindHotkeys(mapping)",
+        "type" : "Method",
+        "returns" : [
+          " * The SpacesSync object",
+          ""
+        ],
+        "def" : "SpacesSync:bindHotkeys(mapping)",
+        "desc" : "Binds hotkeys for SpacesSync."
+      }
+    ],
     "Command" : [
 
     ],
+    "doc" : "Synchronize macOS Spaces across monitors.\n\nWhen you switch Spaces on one monitor, all other monitors in the same\nsync group follow to the matching Space index.\n\nMonitors are identified by position number (reading order:\nleft-to-right, top-to-bottom). Define sync groups as sets of position\nnumbers.\n\n**Requirements:**\n * macOS Sequoia 15.0+ (uses private `hs.spaces` APIs)\n * Two or more monitors with multiple Spaces configured\n * \"Displays have separate Spaces\" must be ON (System Settings > Desktop & Dock > Mission Control)\n * \"Automatically rearrange Spaces based on most recent use\" should be OFF\n\nDownload: [https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/SpacesSync.spoon.zip](https:\/\/github.com\/Hammerspoon\/Spoons\/raw\/master\/Spoons\/SpacesSync.spoon.zip)",
     "items" : [
       {
+        "doc" : "Seconds to wait after all switches complete before re-enabling the watcher.\nPrevents the watcher from reacting to our own programmatic space switches.\n\nDefault value: `0.8`",
         "parameters" : [
 
         ],
+        "name" : "debounceSeconds",
         "stripped_doc" : [
           "Seconds to wait after all switches complete before re-enabling the watcher.",
           "Prevents the watcher from reacting to our own programmatic space switches.",
           "",
           "Default value: `0.8`"
         ],
-        "desc" : "Seconds to wait after all switches complete before re-enabling the watcher.",
-        "doc" : "Seconds to wait after all switches complete before re-enabling the watcher.\nPrevents the watcher from reacting to our own programmatic space switches.\n\nDefault value: `0.8`",
         "notes" : [
 
         ],
@@ -265,12 +489,14 @@
 
         ],
         "def" : "SpacesSync.debounceSeconds",
-        "name" : "debounceSeconds"
+        "desc" : "Seconds to wait after all switches complete before re-enabling the watcher."
       },
       {
+        "doc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:\n\n```lua\nspoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)\n```\n\nDefault value:\n```lua\n{\n  toggle      = {{\"ctrl\", \"alt\", \"cmd\"}, \"Y\"},\n  showNames   = {{\"ctrl\", \"alt\", \"cmd\"}, \"N\"},\n  renameSpace = {{\"ctrl\", \"alt\", \"cmd\"}, \"R\"},\n}\n```",
         "parameters" : [
 
         ],
+        "name" : "defaultHotkeys",
         "stripped_doc" : [
           "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:",
           "",
@@ -287,8 +513,6 @@
           "}",
           "```"
         ],
-        "desc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:",
-        "doc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:\n\n```lua\nspoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)\n```\n\nDefault value:\n```lua\n{\n  toggle      = {{\"ctrl\", \"alt\", \"cmd\"}, \"Y\"},\n  showNames   = {{\"ctrl\", \"alt\", \"cmd\"}, \"N\"},\n  renameSpace = {{\"ctrl\", \"alt\", \"cmd\"}, \"R\"},\n}\n```",
         "notes" : [
 
         ],
@@ -298,12 +522,14 @@
 
         ],
         "def" : "SpacesSync.defaultHotkeys",
-        "name" : "defaultHotkeys"
+        "desc" : "Default hotkey mapping. Use with `:bindHotkeys()` for a quick setup:"
       },
       {
+        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "parameters" : [
 
         ],
+        "name" : "logger",
         "stripped_doc" : [
           "Logger object used within the Spoon. Set the log level to control verbosity.",
           "",
@@ -316,8 +542,6 @@
           "spoon.SpacesSync.logger.setLogLevel('debug')",
           "```"
         ],
-        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity.",
-        "doc" : "Logger object used within the Spoon. Set the log level to control verbosity.\n\nDefault log level: `info`. Set to `debug` for verbose watcher state dumps\nand per-target dispatch details. Set to `warning` to suppress routine sync\nmessages.\n\nExample:\n```lua\nspoon.SpacesSync.logger.setLogLevel('debug')\n```",
         "notes" : [
 
         ],
@@ -327,20 +551,20 @@
 
         ],
         "def" : "SpacesSync.logger",
-        "name" : "logger"
+        "desc" : "Logger object used within the Spoon. Set the log level to control verbosity."
       },
       {
+        "doc" : "How long (in seconds) the Space-names popup remains visible after a\nSpace switch or explicit `:showNames()` call.\n\nDefault value: `2`",
         "parameters" : [
 
         ],
+        "name" : "popupDuration",
         "stripped_doc" : [
           "How long (in seconds) the Space-names popup remains visible after a",
           "Space switch or explicit `:showNames()` call.",
           "",
           "Default value: `2`"
         ],
-        "desc" : "How long (in seconds) the Space-names popup remains visible after a",
-        "doc" : "How long (in seconds) the Space-names popup remains visible after a\nSpace switch or explicit `:showNames()` call.\n\nDefault value: `2`",
         "notes" : [
 
         ],
@@ -350,28 +574,40 @@
 
         ],
         "def" : "SpacesSync.popupDuration",
-        "name" : "popupDuration"
+        "desc" : "How long (in seconds) the Space-names popup remains visible after a"
       },
       {
+        "doc" : "Nested table of Space names, keyed by name group then by Space index:\n\n```lua\n{\n  [\"1\"]     = { [1] = \"Notes\", [2] = \"Music\" },              -- independent monitor 1\n  [\"2,3,4\"] = { [1] = \"Code\",  [2] = \"Email\", [3] = \"Browser\" }, -- sync group {2,3,4}\n}\n```\n\nA monitor's **name group** is the sync group containing its position\n(sorted, comma-joined — e.g. `\"2,3,4\"`), or an implicit group-of-one\n(just its position, e.g. `\"1\"`) for independent monitors. Names live\ninside the group so independent monitors and different sync groups\ndon't share a flat global namespace.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues. Use `:renameCurrentSpace()` (bound to the `renameSpace`\nhotkey) to set or clear names; those changes persist across\nHammerspoon reloads.\n\nUnnamed indices render as dim italic \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "parameters" : [
 
         ],
+        "name" : "spaceNames",
         "stripped_doc" : [
-          "Table mapping Space index (number) to name (string). Shared across all",
-          "sync groups — index N refers to the Nth Space on any monitor.",
+          "Nested table of Space names, keyed by name group then by Space index:",
+          "",
+          "```lua",
+          "{",
+          "  [\"1\"]     = { [1] = \"Notes\", [2] = \"Music\" },              -- independent monitor 1",
+          "  [\"2,3,4\"] = { [1] = \"Code\",  [2] = \"Email\", [3] = \"Browser\" }, -- sync group {2,3,4}",
+          "}",
+          "```",
+          "",
+          "A monitor's **name group** is the sync group containing its position",
+          "(sorted, comma-joined — e.g. `\"2,3,4\"`), or an implicit group-of-one",
+          "(just its position, e.g. `\"1\"`) for independent monitors. Names live",
+          "inside the group so independent monitors and different sync groups",
+          "don't share a flat global namespace.",
           "",
           "**This table is populated from `hs.settings` at runtime. Do not assign",
           "names here in your config** — they will be overwritten by persisted",
-          "values and create the illusion of config drift. Use",
-          "`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or",
-          "clear names; those changes persist across Hammerspoon reloads.",
+          "values. Use `:renameCurrentSpace()` (bound to the `renameSpace`",
+          "hotkey) to set or clear names; those changes persist across",
+          "Hammerspoon reloads.",
           "",
-          "Unnamed indices render as \"Space N\" in the popup.",
+          "Unnamed indices render as dim italic \"Space N\" in the popup.",
           "",
           "Default value: `{}` (filled in from `hs.settings` on first use)"
         ],
-        "desc" : "Table mapping Space index (number) to name (string). Shared across all",
-        "doc" : "Table mapping Space index (number) to name (string). Shared across all\nsync groups — index N refers to the Nth Space on any monitor.\n\n**This table is populated from `hs.settings` at runtime. Do not assign\nnames here in your config** — they will be overwritten by persisted\nvalues and create the illusion of config drift. Use\n`:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or\nclear names; those changes persist across Hammerspoon reloads.\n\nUnnamed indices render as \"Space N\" in the popup.\n\nDefault value: `{}` (filled in from `hs.settings` on first use)",
         "notes" : [
 
         ],
@@ -381,20 +617,20 @@
 
         ],
         "def" : "SpacesSync.spaceNames",
-        "name" : "spaceNames"
+        "desc" : "Nested table of Space names, keyed by name group then by Space index:"
       },
       {
+        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
         "parameters" : [
 
         ],
+        "name" : "statusDuration",
         "stripped_doc" : [
           "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
           "OFF\") stays on screen when starting, stopping, or toggling the Spoon.",
           "",
           "Default value: `3`"
         ],
-        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:",
-        "doc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:\nOFF\") stays on screen when starting, stopping, or toggling the Spoon.\n\nDefault value: `3`",
         "notes" : [
 
         ],
@@ -404,20 +640,20 @@
 
         ],
         "def" : "SpacesSync.statusDuration",
-        "name" : "statusDuration"
+        "desc" : "How long (in seconds) the status HUD (\"SpacesSync: ON\" \/ \"SpacesSync:"
       },
       {
+        "doc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.\nmacOS silently drops rapid back-to-back space switches.\n\nDefault value: `0.3`",
         "parameters" : [
 
         ],
+        "name" : "switchDelay",
         "stripped_doc" : [
           "Delay in seconds between each `hs.spaces.gotoSpace()` call.",
           "macOS silently drops rapid back-to-back space switches.",
           "",
           "Default value: `0.3`"
         ],
-        "desc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.",
-        "doc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call.\nmacOS silently drops rapid back-to-back space switches.\n\nDefault value: `0.3`",
         "notes" : [
 
         ],
@@ -427,12 +663,14 @@
 
         ],
         "def" : "SpacesSync.switchDelay",
-        "name" : "switchDelay"
+        "desc" : "Delay in seconds between each `hs.spaces.gotoSpace()` call."
       },
       {
+        "doc" : "List of sync groups. Each group is a list of monitor position numbers.\nPositions are assigned in reading order (left-to-right, top-to-bottom).\nMonitors not in any group are independent.\n\nDefault value: `{ {1, 2} }`\n\nExamples:\n * `{ {1, 2} }` — monitors 1 and 2 sync together\n * `{ {1, 2}, {3, 4} }` — two independent pairs\n * `{ {1, 2, 3} }` — three monitors sync together",
         "parameters" : [
 
         ],
+        "name" : "syncGroups",
         "stripped_doc" : [
           "List of sync groups. Each group is a list of monitor position numbers.",
           "Positions are assigned in reading order (left-to-right, top-to-bottom).",
@@ -445,8 +683,6 @@
           " * `{ {1, 2}, {3, 4} }` — two independent pairs",
           " * `{ {1, 2, 3} }` — three monitors sync together"
         ],
-        "desc" : "List of sync groups. Each group is a list of monitor position numbers.",
-        "doc" : "List of sync groups. Each group is a list of monitor position numbers.\nPositions are assigned in reading order (left-to-right, top-to-bottom).\nMonitors not in any group are independent.\n\nDefault value: `{ {1, 2} }`\n\nExamples:\n * `{ {1, 2} }` — monitors 1 and 2 sync together\n * `{ {1, 2}, {3, 4} }` — two independent pairs\n * `{ {1, 2, 3} }` — three monitors sync together",
         "notes" : [
 
         ],
@@ -456,9 +692,10 @@
 
         ],
         "def" : "SpacesSync.syncGroups",
-        "name" : "syncGroups"
+        "desc" : "List of sync groups. Each group is a list of monitor position numbers."
       },
       {
+        "doc" : "Binds hotkeys for SpacesSync.\n\nParameters:\n * mapping - A table containing hotkey modifier\/key details for any of:\n  * toggle - Toggle Space syncing on\/off\n  * showNames - Show the Space-names popup on the current monitor\n  * renameSpace - Rename the currently active Space\n\nReturns:\n * The SpacesSync object\n\nNotes:\n * For a quick setup with defaults, use:\n   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`",
         "parameters" : [
           " * mapping - A table containing hotkey modifier\/key details for any of:",
           "  * toggle - Toggle Space syncing on\/off",
@@ -466,12 +703,11 @@
           "  * renameSpace - Rename the currently active Space",
           ""
         ],
+        "name" : "bindHotkeys",
         "stripped_doc" : [
           "Binds hotkeys for SpacesSync.",
           ""
         ],
-        "desc" : "Binds hotkeys for SpacesSync.",
-        "doc" : "Binds hotkeys for SpacesSync.\n\nParameters:\n * mapping - A table containing hotkey modifier\/key details for any of:\n  * toggle - Toggle Space syncing on\/off\n  * showNames - Show the Space-names popup on the current monitor\n  * renameSpace - Rename the currently active Space\n\nReturns:\n * The SpacesSync object\n\nNotes:\n * For a quick setup with defaults, use:\n   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`",
         "notes" : [
           " * For a quick setup with defaults, use:",
           "   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`"
@@ -483,20 +719,20 @@
           ""
         ],
         "def" : "SpacesSync:bindHotkeys(mapping)",
-        "name" : "bindHotkeys"
+        "desc" : "Binds hotkeys for SpacesSync."
       },
       {
+        "doc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.\nDoes not start syncing — call `:start()` to begin.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "init",
         "stripped_doc" : [
           "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.",
           "Does not start syncing — call `:start()` to begin.",
           ""
         ],
-        "desc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.",
-        "doc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.\nDoes not start syncing — call `:start()` to begin.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -506,19 +742,19 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:init()",
-        "name" : "init"
+        "desc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`."
       },
       {
+        "doc" : "Returns whether Space syncing is currently active.\n\nParameters:\n * None\n\nReturns:\n * A boolean",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "isEnabled",
         "stripped_doc" : [
           "Returns whether Space syncing is currently active.",
           ""
         ],
-        "desc" : "Returns whether Space syncing is currently active.",
-        "doc" : "Returns whether Space syncing is currently active.\n\nParameters:\n * None\n\nReturns:\n * A boolean",
         "notes" : [
 
         ],
@@ -528,26 +764,32 @@
           " * A boolean"
         ],
         "def" : "SpacesSync:isEnabled()",
-        "name" : "isEnabled"
+        "desc" : "Returns whether Space syncing is currently active."
       },
       {
+        "doc" : "Prompts for a new name for the Space currently active on the monitor\nunder the mouse cursor (or the main monitor as fallback).\n\nNames are scoped to the monitor's **name group**: the sync group\ncontaining that monitor's position, or an implicit group-of-one for\nindependent monitors. The rename applies to every monitor in the same\nname group (which, by definition, are showing the same Space index\nanyway because they sync in lockstep). A rename on an independent\nmonitor does NOT affect any sync group, and vice versa.\n\nSubmitting an empty name clears the existing name for that index in\nthat group.\n\nAfter saving, the popup is shown with the renamed space highlighted.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "renameCurrentSpace",
         "stripped_doc" : [
           "Prompts for a new name for the Space currently active on the monitor",
-          "under the mouse cursor (or the main monitor as fallback). The name is",
-          "stored against the Space's index and persisted via `hs.settings`, so it",
-          "applies to that index on every monitor in every sync group.",
+          "under the mouse cursor (or the main monitor as fallback).",
           "",
-          "Submitting an empty name clears the existing name for that index.",
+          "Names are scoped to the monitor's **name group**: the sync group",
+          "containing that monitor's position, or an implicit group-of-one for",
+          "independent monitors. The rename applies to every monitor in the same",
+          "name group (which, by definition, are showing the same Space index",
+          "anyway because they sync in lockstep). A rename on an independent",
+          "monitor does NOT affect any sync group, and vice versa.",
+          "",
+          "Submitting an empty name clears the existing name for that index in",
+          "that group.",
           "",
           "After saving, the popup is shown with the renamed space highlighted.",
           ""
         ],
-        "desc" : "Prompts for a new name for the Space currently active on the monitor",
-        "doc" : "Prompts for a new name for the Space currently active on the monitor\nunder the mouse cursor (or the main monitor as fallback). The name is\nstored against the Space's index and persisted via `hs.settings`, so it\napplies to that index on every monitor in every sync group.\n\nSubmitting an empty name clears the existing name for that index.\n\nAfter saving, the popup is shown with the renamed space highlighted.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -557,13 +799,15 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:renameCurrentSpace()",
-        "name" : "renameCurrentSpace"
+        "desc" : "Prompts for a new name for the Space currently active on the monitor"
       },
       {
+        "doc" : "Opens the interactive Space picker on the monitor under the mouse cursor\n(or the main monitor as fallback). The picker lists every Space on that\nmonitor with its name and lets you navigate:\n\n * **↑ \/ ↓**         — move the selection (wraps)\n * **Return \/ Enter** — switch to the selected Space\n * **Escape**        — dismiss without switching\n * Any other key     — passes through to the focused app\n\nAuto-dismisses after 5 seconds of no keypresses. The post-switch popup\nshown after regular Space switches remains non-interactive.\n\nWorks independently of `:start()` — you can bind this to a hotkey\nwithout enabling sync.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "showNames",
         "stripped_doc" : [
           "Opens the interactive Space picker on the monitor under the mouse cursor",
           "(or the main monitor as fallback). The picker lists every Space on that",
@@ -581,8 +825,6 @@
           "without enabling sync.",
           ""
         ],
-        "desc" : "Opens the interactive Space picker on the monitor under the mouse cursor",
-        "doc" : "Opens the interactive Space picker on the monitor under the mouse cursor\n(or the main monitor as fallback). The picker lists every Space on that\nmonitor with its name and lets you navigate:\n\n * **↑ \/ ↓**         — move the selection (wraps)\n * **Return \/ Enter** — switch to the selected Space\n * **Escape**        — dismiss without switching\n * Any other key     — passes through to the focused app\n\nAuto-dismisses after 5 seconds of no keypresses. The post-switch popup\nshown after regular Space switches remains non-interactive.\n\nWorks independently of `:start()` — you can bind this to a hotkey\nwithout enabling sync.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -592,21 +834,21 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:showNames()",
-        "name" : "showNames"
+        "desc" : "Opens the interactive Space picker on the monitor under the mouse cursor"
       },
       {
+        "doc" : "Starts Space syncing.\nChecks macOS version and Mission Control settings, builds the monitor\nposition map, and enables the Space watcher.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "start",
         "stripped_doc" : [
           "Starts Space syncing.",
           "Checks macOS version and Mission Control settings, builds the monitor",
           "position map, and enables the Space watcher.",
           ""
         ],
-        "desc" : "Starts Space syncing.",
-        "doc" : "Starts Space syncing.\nChecks macOS version and Mission Control settings, builds the monitor\nposition map, and enables the Space watcher.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -616,19 +858,19 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:start()",
-        "name" : "start"
+        "desc" : "Starts Space syncing."
       },
       {
+        "doc" : "Stops Space syncing and cleans up watchers and timers.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "stop",
         "stripped_doc" : [
           "Stops Space syncing and cleans up watchers and timers.",
           ""
         ],
-        "desc" : "Stops Space syncing and cleans up watchers and timers.",
-        "doc" : "Stops Space syncing and cleans up watchers and timers.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -638,19 +880,19 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:stop()",
-        "name" : "stop"
+        "desc" : "Stops Space syncing and cleans up watchers and timers."
       },
       {
+        "doc" : "Toggles Space syncing on or off.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "parameters" : [
           " * None",
           ""
         ],
+        "name" : "toggle",
         "stripped_doc" : [
           "Toggles Space syncing on or off.",
           ""
         ],
-        "desc" : "Toggles Space syncing on or off.",
-        "doc" : "Toggles Space syncing on or off.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
         "notes" : [
 
         ],
@@ -660,213 +902,7 @@
           " * The SpacesSync object"
         ],
         "def" : "SpacesSync:toggle()",
-        "name" : "toggle"
-      }
-    ],
-    "Method" : [
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.",
-          "Does not start syncing — call `:start()` to begin.",
-          ""
-        ],
-        "desc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.",
-        "doc" : "Initializes the SpacesSync spoon. Called automatically by `hs.loadSpoon()`.\nDoes not start syncing — call `:start()` to begin.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:init()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:init()",
-        "name" : "init"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Starts Space syncing.",
-          "Checks macOS version and Mission Control settings, builds the monitor",
-          "position map, and enables the Space watcher.",
-          ""
-        ],
-        "desc" : "Starts Space syncing.",
-        "doc" : "Starts Space syncing.\nChecks macOS version and Mission Control settings, builds the monitor\nposition map, and enables the Space watcher.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:start()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:start()",
-        "name" : "start"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Stops Space syncing and cleans up watchers and timers.",
-          ""
-        ],
-        "desc" : "Stops Space syncing and cleans up watchers and timers.",
-        "doc" : "Stops Space syncing and cleans up watchers and timers.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:stop()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:stop()",
-        "name" : "stop"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Toggles Space syncing on or off.",
-          ""
-        ],
-        "desc" : "Toggles Space syncing on or off.",
-        "doc" : "Toggles Space syncing on or off.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:toggle()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:toggle()",
-        "name" : "toggle"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Returns whether Space syncing is currently active.",
-          ""
-        ],
-        "desc" : "Returns whether Space syncing is currently active.",
-        "doc" : "Returns whether Space syncing is currently active.\n\nParameters:\n * None\n\nReturns:\n * A boolean",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:isEnabled()",
-        "type" : "Method",
-        "returns" : [
-          " * A boolean"
-        ],
-        "def" : "SpacesSync:isEnabled()",
-        "name" : "isEnabled"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Opens the interactive Space picker on the monitor under the mouse cursor",
-          "(or the main monitor as fallback). The picker lists every Space on that",
-          "monitor with its name and lets you navigate:",
-          "",
-          " * **↑ \/ ↓**         — move the selection (wraps)",
-          " * **Return \/ Enter** — switch to the selected Space",
-          " * **Escape**        — dismiss without switching",
-          " * Any other key     — passes through to the focused app",
-          "",
-          "Auto-dismisses after 5 seconds of no keypresses. The post-switch popup",
-          "shown after regular Space switches remains non-interactive.",
-          "",
-          "Works independently of `:start()` — you can bind this to a hotkey",
-          "without enabling sync.",
-          ""
-        ],
-        "desc" : "Opens the interactive Space picker on the monitor under the mouse cursor",
-        "doc" : "Opens the interactive Space picker on the monitor under the mouse cursor\n(or the main monitor as fallback). The picker lists every Space on that\nmonitor with its name and lets you navigate:\n\n * **↑ \/ ↓**         — move the selection (wraps)\n * **Return \/ Enter** — switch to the selected Space\n * **Escape**        — dismiss without switching\n * Any other key     — passes through to the focused app\n\nAuto-dismisses after 5 seconds of no keypresses. The post-switch popup\nshown after regular Space switches remains non-interactive.\n\nWorks independently of `:start()` — you can bind this to a hotkey\nwithout enabling sync.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:showNames()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:showNames()",
-        "name" : "showNames"
-      },
-      {
-        "parameters" : [
-          " * None",
-          ""
-        ],
-        "stripped_doc" : [
-          "Prompts for a new name for the Space currently active on the monitor",
-          "under the mouse cursor (or the main monitor as fallback). The name is",
-          "stored against the Space's index and persisted via `hs.settings`, so it",
-          "applies to that index on every monitor in every sync group.",
-          "",
-          "Submitting an empty name clears the existing name for that index.",
-          "",
-          "After saving, the popup is shown with the renamed space highlighted.",
-          ""
-        ],
-        "desc" : "Prompts for a new name for the Space currently active on the monitor",
-        "doc" : "Prompts for a new name for the Space currently active on the monitor\nunder the mouse cursor (or the main monitor as fallback). The name is\nstored against the Space's index and persisted via `hs.settings`, so it\napplies to that index on every monitor in every sync group.\n\nSubmitting an empty name clears the existing name for that index.\n\nAfter saving, the popup is shown with the renamed space highlighted.\n\nParameters:\n * None\n\nReturns:\n * The SpacesSync object",
-        "notes" : [
-
-        ],
-        "signature" : "SpacesSync:renameCurrentSpace()",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object"
-        ],
-        "def" : "SpacesSync:renameCurrentSpace()",
-        "name" : "renameCurrentSpace"
-      },
-      {
-        "parameters" : [
-          " * mapping - A table containing hotkey modifier\/key details for any of:",
-          "  * toggle - Toggle Space syncing on\/off",
-          "  * showNames - Show the Space-names popup on the current monitor",
-          "  * renameSpace - Rename the currently active Space",
-          ""
-        ],
-        "stripped_doc" : [
-          "Binds hotkeys for SpacesSync.",
-          ""
-        ],
-        "desc" : "Binds hotkeys for SpacesSync.",
-        "doc" : "Binds hotkeys for SpacesSync.\n\nParameters:\n * mapping - A table containing hotkey modifier\/key details for any of:\n  * toggle - Toggle Space syncing on\/off\n  * showNames - Show the Space-names popup on the current monitor\n  * renameSpace - Rename the currently active Space\n\nReturns:\n * The SpacesSync object\n\nNotes:\n * For a quick setup with defaults, use:\n   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`",
-        "notes" : [
-          " * For a quick setup with defaults, use:",
-          "   `spoon.SpacesSync:bindHotkeys(spoon.SpacesSync.defaultHotkeys)`"
-        ],
-        "signature" : "SpacesSync:bindHotkeys(mapping)",
-        "type" : "Method",
-        "returns" : [
-          " * The SpacesSync object",
-          ""
-        ],
-        "def" : "SpacesSync:bindHotkeys(mapping)",
-        "name" : "bindHotkeys"
+        "desc" : "Toggles Space syncing on or off."
       }
     ],
     "name" : "SpacesSync"

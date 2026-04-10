@@ -114,16 +114,28 @@ obj.debounceSeconds = 0.8
 
 --- SpacesSync.spaceNames
 --- Variable
---- Table mapping Space index (number) to name (string). Shared across all
---- sync groups — index N refers to the Nth Space on any monitor.
+--- Nested table of Space names, keyed by name group then by Space index:
+---
+--- ```lua
+--- {
+---   ["1"]     = { [1] = "Notes", [2] = "Music" },              -- independent monitor 1
+---   ["2,3,4"] = { [1] = "Code",  [2] = "Email", [3] = "Browser" }, -- sync group {2,3,4}
+--- }
+--- ```
+---
+--- A monitor's **name group** is the sync group containing its position
+--- (sorted, comma-joined — e.g. `"2,3,4"`), or an implicit group-of-one
+--- (just its position, e.g. `"1"`) for independent monitors. Names live
+--- inside the group so independent monitors and different sync groups
+--- don't share a flat global namespace.
 ---
 --- **This table is populated from `hs.settings` at runtime. Do not assign
 --- names here in your config** — they will be overwritten by persisted
---- values and create the illusion of config drift. Use
---- `:renameCurrentSpace()` (bound to the `renameSpace` hotkey) to set or
---- clear names; those changes persist across Hammerspoon reloads.
+--- values. Use `:renameCurrentSpace()` (bound to the `renameSpace`
+--- hotkey) to set or clear names; those changes persist across
+--- Hammerspoon reloads.
 ---
---- Unnamed indices render as "Space N" in the popup.
+--- Unnamed indices render as dim italic "Space N" in the popup.
 ---
 --- Default value: `{}` (filled in from `hs.settings` on first use)
 obj.spaceNames = {}
@@ -283,19 +295,99 @@ end
 -- ============================================================================
 -- SPACE NAMES
 -- ============================================================================
+--
+-- Names are scoped to a "name group" so that independent monitors and
+-- different sync groups don't share a flat global namespace. The name group
+-- for a monitor is:
+--   * The sync group containing the monitor's position (if any), or
+--   * An implicit group-of-one for independent monitors.
+--
+-- The group key is the sorted comma-joined positions of the group, e.g.
+-- "2,3,4" for a sync group of monitors 2, 3, 4; "1" for an independent
+-- monitor at position 1. This matches the positional identity the user
+-- writes in `syncGroups`.
+--
+-- Persistence layout (keys are stringified for hs.settings / plist round-trip):
+--
+--   {
+--     ["1"]     = { ["1"] = "Notes", ["2"] = "Music" },
+--     ["2,3,4"] = { ["1"] = "Code",  ["2"] = "Email", ["3"] = "Browser" },
+--   }
 
 local SETTINGS_KEY = "SpacesSync.spaceNames"
 local namesLoaded = false
 
+-- Canonical group key for the monitor at `uuid`. Returns nil if the UUID
+-- isn't in the current position map (e.g. map not built yet).
+local function getGroupKey(uuid)
+  local pos = uuidToPosition[uuid]
+  if not pos then return nil end
+
+  if type(obj.syncGroups) == "table" then
+    for _, group in ipairs(obj.syncGroups) do
+      if type(group) == "table" then
+        for _, gpos in ipairs(group) do
+          if gpos == pos then
+            -- Sort a copy of the group's positions and join with commas.
+            local sorted = {}
+            for _, p in ipairs(group) do
+              if type(p) == "number" then
+                sorted[#sorted + 1] = p
+              end
+            end
+            table.sort(sorted)
+            local parts = {}
+            for _, p in ipairs(sorted) do
+              parts[#parts + 1] = tostring(p)
+            end
+            return table.concat(parts, ",")
+          end
+        end
+      end
+    end
+  end
+
+  -- Not in any sync group — implicit group-of-one.
+  return tostring(pos)
+end
+
+-- True if the stored value looks like the old pre-group-key flat schema
+-- (top-level values are strings instead of nested tables).
+local function isLegacyFlatSchema(stored)
+  for _, v in pairs(stored) do
+    if type(v) == "string" then return true end
+  end
+  return false
+end
+
 local function loadSpaceNames()
   local stored = hs.settings.get(SETTINGS_KEY)
   if type(stored) ~= "table" then return {} end
-  -- hs.settings round-trips via plist; numeric keys may come back as strings.
+
+  -- Legacy flat schema (index → name): discard. Renames are cheap; not
+  -- worth writing a migration that would require knowing which group each
+  -- old index belonged to, which we can't know post-hoc.
+  if next(stored) and isLegacyFlatSchema(stored) then
+    obj.logger.w("Discarding legacy flat spaceNames schema (pre-group-key). Re-rename via ⌃⌥⌘R.")
+    hs.settings.set(SETTINGS_KEY, nil)
+    return {}
+  end
+
+  -- Nested schema: group key → { index (string) → name (string) }.
+  -- Normalize the inner keys from strings back to numbers.
   local normalized = {}
-  for k, v in pairs(stored) do
-    local n = tonumber(k)
-    if n and type(v) == "string" then
-      normalized[n] = v
+  for groupKey, innerTable in pairs(stored) do
+    if type(groupKey) == "string" and type(innerTable) == "table" then
+      local inner = {}
+      for k, v in pairs(innerTable) do
+        local n = tonumber(k)
+        if n and type(v) == "string" and v ~= "" then
+          inner[n] = v
+        end
+      end
+      if next(inner) then
+        normalized[groupKey] = inner
+      end
     end
   end
   return normalized
@@ -303,9 +395,17 @@ end
 
 local function saveSpaceNames()
   local toStore = {}
-  for k, v in pairs(obj.spaceNames) do
-    if type(v) == "string" and v ~= "" then
-      toStore[tostring(k)] = v
+  for groupKey, inner in pairs(obj.spaceNames) do
+    if type(groupKey) == "string" and type(inner) == "table" then
+      local innerStore = {}
+      for k, v in pairs(inner) do
+        if type(v) == "string" and v ~= "" then
+          innerStore[tostring(k)] = v
+        end
+      end
+      if next(innerStore) then
+        toStore[groupKey] = innerStore
+      end
     end
   end
   hs.settings.set(SETTINGS_KEY, toStore)
@@ -316,8 +416,6 @@ end
 -- single source of truth for names. Idempotent.
 local function ensureNamesLoaded()
   if namesLoaded then return end
-  -- Clear anything the user may have set in init.lua so there is no
-  -- ambiguity about precedence.
   for k in pairs(obj.spaceNames) do
     obj.spaceNames[k] = nil
   end
@@ -328,11 +426,20 @@ local function ensureNamesLoaded()
   namesLoaded = true
 end
 
-local function nameForIndex(index)
+-- Look up the name for the given monitor's Nth Space. Returns (name,
+-- isUnnamed). If the monitor has no name stored for that index, returns
+-- "Space N" with isUnnamed = true.
+local function nameForIndex(uuid, index)
   ensureNamesLoaded()
-  local name = obj.spaceNames[index]
-  if name and name ~= "" then
-    return name, false
+  local groupKey = getGroupKey(uuid)
+  if groupKey then
+    local group = obj.spaceNames[groupKey]
+    if group then
+      local name = group[index]
+      if name and name ~= "" then
+        return name, false
+      end
+    end
   end
   return "Space " .. tostring(index), true
 end
@@ -438,7 +545,7 @@ buildPopupCanvas = function(triggerUUID, highlightedIndex)
   local rows = {}
   local maxNameWidth = 0
   for i = 1, spaceCount do
-    local name, isUnnamed = nameForIndex(i)
+    local name, isUnnamed = nameForIndex(triggerUUID, i)
     local isCurrent = (highlightedIndex ~= nil and i == highlightedIndex)
     local font = isCurrent and BIG_FONT or SMALL_FONT
     local size = isCurrent and BIG_FONT_SIZE or SMALL_FONT_SIZE
@@ -1260,11 +1367,17 @@ end
 --- SpacesSync:renameCurrentSpace()
 --- Method
 --- Prompts for a new name for the Space currently active on the monitor
---- under the mouse cursor (or the main monitor as fallback). The name is
---- stored against the Space's index and persisted via `hs.settings`, so it
---- applies to that index on every monitor in every sync group.
+--- under the mouse cursor (or the main monitor as fallback).
 ---
---- Submitting an empty name clears the existing name for that index.
+--- Names are scoped to the monitor's **name group**: the sync group
+--- containing that monitor's position, or an implicit group-of-one for
+--- independent monitors. The rename applies to every monitor in the same
+--- name group (which, by definition, are showing the same Space index
+--- anyway because they sync in lockstep). A rename on an independent
+--- monitor does NOT affect any sync group, and vice versa.
+---
+--- Submitting an empty name clears the existing name for that index in
+--- that group.
 ---
 --- After saving, the popup is shown with the renamed space highlighted.
 ---
@@ -1296,10 +1409,18 @@ function obj:renameCurrentSpace()
     return self
   end
 
-  local existing = obj.spaceNames[index] or ""
+  local groupKey = getGroupKey(uuid)
+  if not groupKey then
+    hs.alert.show("SpacesSync: can't determine name group")
+    return self
+  end
+
+  local group = obj.spaceNames[groupKey]
+  local existing = (group and group[index]) or ""
+
   local button, text = hs.dialog.textPrompt(
     "Rename Space " .. index,
-    "Enter a name for Space " .. index .. ". Applies to index " .. index .. " on every monitor.\nLeave blank to clear.",
+    "Enter a name for Space " .. index .. " in group [" .. groupKey .. "]. Applies to this name group only.\nLeave blank to clear.",
     existing,
     "Save",
     "Cancel"
@@ -1309,12 +1430,21 @@ function obj:renameCurrentSpace()
     return self
   end
 
+  if not obj.spaceNames[groupKey] then
+    obj.spaceNames[groupKey] = {}
+  end
+
   if text and text ~= "" then
-    obj.spaceNames[index] = text
-    obj.logger.i("Renamed Space " .. index .. " -> \"" .. text .. "\"")
+    obj.spaceNames[groupKey][index] = text
+    obj.logger.i("Renamed Space " .. index .. " in group [" .. groupKey .. "] -> \"" .. text .. "\"")
   else
-    obj.spaceNames[index] = nil
-    obj.logger.i("Cleared name for Space " .. index)
+    obj.spaceNames[groupKey][index] = nil
+    -- Drop the group entry entirely if it's now empty so we don't persist
+    -- empty tables.
+    if not next(obj.spaceNames[groupKey]) then
+      obj.spaceNames[groupKey] = nil
+    end
+    obj.logger.i("Cleared name for Space " .. index .. " in group [" .. groupKey .. "]")
   end
   saveSpaceNames()
 

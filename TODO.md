@@ -34,6 +34,27 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 - [ ] **File issue for `hs.startupCallback`** (optional, Low priority) — Hammerspoon has `hs.shutdownCallback` but no symmetric startup hook. Adding one would eliminate the `doAfter(0)` workaround documented in `dev-docs/hammerspoon-and-spaces-quirks.md`. Clean one-function ask against `MJLua.m`. No existing issue today.
 
+## Design decisions to revisit
+
+- [ ] **Space-name group keys: position-based vs UUID-based** — Names are keyed by the sorted comma-joined position numbers of the name group (e.g. `"2,3,4"` for a sync group, `"1"` for an independent monitor). This matches the positional identity the user writes in `syncGroups`, but has stability weaknesses.
+
+  **Pros of positions (current choice):**
+  * Consistent with how `syncGroups` is configured — the key is literally the `syncGroups` entry joined.
+  * Human-readable in `hs.settings` dumps.
+  * Stable across reboots as long as monitor physical arrangement is unchanged.
+  * No extra indirection via UUIDs.
+
+  **Cons of positions:**
+  * Rearranging monitors in System Settings > Displays changes position numbers (reading order) and orphans stored names.
+  * Adding or removing a monitor shifts positions for every monitor to its right, orphaning all names.
+  * Changing `syncGroups` to add/remove a position from a group changes the key entirely; names stay persisted but are no longer reached.
+
+  **Alternative: sorted-set-of-UUIDs hash as the key.**
+  * Pros: survives position reshuffles. Rearranging displays in System Settings doesn't change UUIDs; neither does re-plugging. More stable in practice.
+  * Cons: opaque in settings dumps. Doesn't survive monitor replacement (new UUID). Breaks if the user intentionally changes sync group membership (same problem as positions).
+
+  **Neither is perfect** — the core question is whether physical rearrangement (position churn) or config churn (`syncGroups` edits) is the more common invalidation event. For John's setup (4 stable monitors, rarely reconfigured), positions are fine. Revisit if anyone hits orphaned-names pain.
+
 ## Features
 
 - [ ] Publish to GitHub
