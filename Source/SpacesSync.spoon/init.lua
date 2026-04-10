@@ -335,11 +335,32 @@ end
 
 -- Mockup 4: small context rows above/below + large highlighted current row.
 -- All rows show their index. Rendered with hs.canvas on the trigger monitor.
+--
+-- Two display modes share this canvas:
+--   * Passive popup — `showPopup()`. Timer-dismissed. Used by the watcher
+--     after sync, by rename success, by independent-monitor switches.
+--   * Interactive picker — `startPicker()`. Eventtap captures arrow keys to
+--     move the selection, Return to switch, Escape to dismiss. Rebuilds the
+--     canvas on each keypress via `buildPopupCanvas`.
+--
+-- `popupState` is shared so a picker launch cleanly supersedes any visible
+-- passive popup, and a new passive popup (e.g. from watcher-driven sync)
+-- cleanly supersedes an in-progress picker.
 
 local popupState = {
   canvas = nil,
   timer = nil,
+  -- Picker state — nil/false when not in interactive mode.
+  isPicker = false,
+  eventtap = nil,
+  pickerTriggerUUID = nil,
+  pickerSelectedIndex = nil,
+  pickerSpaceCount = nil,
 }
+
+-- Forward declarations for mutual reference between the passive-popup and
+-- picker layers.
+local hidePopup, showPopup, buildPopupCanvas, pickerDismiss
 
 local POPUP_MARGIN_TOP = 80
 local POPUP_PAD_X = 24
@@ -372,7 +393,9 @@ local function measureTextWidth(text, font, size)
   return (s and s.w) or (#text * size * 0.6)
 end
 
-local function hidePopup()
+-- Clears the canvas and cancels the auto-dismiss timer.
+-- Does NOT touch picker state — see `pickerDismiss()` for full picker teardown.
+hidePopup = function()
   if popupState.timer then
     popupState.timer:stop()
     popupState.timer = nil
@@ -383,10 +406,17 @@ local function hidePopup()
   end
 end
 
--- Show the space-names popup on the given monitor, highlighting `highlightedIndex`
--- (pass nil if no current index is known — in that case all rows render small).
-local function showPopup(triggerUUID, highlightedIndex)
-  hidePopup()
+-- Build and show the canvas for the given monitor, highlighting
+-- `highlightedIndex` (pass nil for no highlight). Does NOT set a dismissal
+-- timer and does NOT touch picker state — pure rendering.
+-- Used directly by the picker to rebuild on each arrow press; wrapped by
+-- `showPopup()` for the passive, timer-dismissed case.
+buildPopupCanvas = function(triggerUUID, highlightedIndex)
+  -- Clear any existing canvas without touching the timer or picker state.
+  if popupState.canvas then
+    popupState.canvas:delete()
+    popupState.canvas = nil
+  end
 
   local screen = hs.screen.find(triggerUUID)
   if not screen then return end
@@ -503,7 +533,179 @@ local function showPopup(triggerUUID, highlightedIndex)
 
   c:show()
   popupState.canvas = c
+end
+
+-- Passive popup: shows the popup for `obj.popupDuration` seconds, then
+-- auto-dismisses. Dismisses any in-progress picker first. Used by the
+-- watcher after sync, by `renameCurrentSpace`, and by independent-monitor
+-- switches.
+showPopup = function(triggerUUID, highlightedIndex)
+  if popupState.isPicker then
+    pickerDismiss()
+  end
+  if popupState.timer then
+    popupState.timer:stop()
+    popupState.timer = nil
+  end
+  buildPopupCanvas(triggerUUID, highlightedIndex)
   popupState.timer = hs.timer.doAfter(obj.popupDuration, hidePopup)
+end
+
+-- ============================================================================
+-- PICKER
+-- ============================================================================
+
+-- Interactive picker state machine built on top of the popup canvas.
+-- User invokes via `:showNames()` (⌃⌥⌘N). While visible:
+--   * Up / Down      — move selection (wraps)
+--   * Return / Enter — switch to selected Space
+--   * Escape         — dismiss without switching
+--   * Any other key  — passes through to the focused app
+-- Auto-dismisses after `PICKER_INACTIVITY_SECONDS` of no keypresses.
+--
+-- The post-switch passive popup remains non-interactive — pressing arrows
+-- there does nothing. Only `:showNames()` enters the picker. This keeps the
+-- passive notification out of the user's keyboard path.
+
+local PICKER_INACTIVITY_SECONDS = 5
+
+-- macOS virtual key codes (see hs.keycodes.map)
+local KEY_UP           = 126
+local KEY_DOWN         = 125
+local KEY_RETURN       = 36
+local KEY_NUMPAD_ENTER = 76
+local KEY_ESCAPE       = 53
+
+local function stopPickerEventtap()
+  if popupState.eventtap then
+    popupState.eventtap:stop()
+    popupState.eventtap = nil
+  end
+end
+
+-- Reset the auto-dismiss inactivity timer. Called on every keypress.
+local function pickerResetTimer()
+  if popupState.timer then
+    popupState.timer:stop()
+  end
+  popupState.timer = hs.timer.doAfter(PICKER_INACTIVITY_SECONDS, function()
+    pickerDismiss()
+  end)
+end
+
+-- Full picker teardown: stop eventtap, clear state, hide canvas + timer.
+-- Idempotent — safe to call when the picker isn't active.
+pickerDismiss = function()
+  stopPickerEventtap()
+  popupState.isPicker = false
+  popupState.pickerTriggerUUID = nil
+  popupState.pickerSelectedIndex = nil
+  popupState.pickerSpaceCount = nil
+  hidePopup()
+end
+
+-- Execute the user's selection: tear down the picker, then dispatch
+-- gotoSpace. Done in this order so the watcher's post-sync passive popup
+-- replaces (rather than fights with) the picker's canvas.
+local function pickerExecuteSwitch()
+  local uuid     = popupState.pickerTriggerUUID
+  local selIndex = popupState.pickerSelectedIndex
+
+  stopPickerEventtap()
+  popupState.isPicker = false
+  popupState.pickerTriggerUUID = nil
+  popupState.pickerSelectedIndex = nil
+  popupState.pickerSpaceCount = nil
+  hidePopup()
+
+  if not uuid or not selIndex then return end
+
+  local targetSpaceID = getSpaceAtIndex(uuid, selIndex)
+  if not targetSpaceID then
+    obj.logger.w("picker: no Space at index " .. tostring(selIndex))
+    return
+  end
+
+  obj.logger.i("picker: switching to index " .. tostring(selIndex))
+  local ok, err = pcall(function() hs.spaces.gotoSpace(targetSpaceID) end)
+  if not ok then
+    obj.logger.e("picker: gotoSpace error — " .. tostring(err))
+  end
+  -- The hs.spaces.watcher will fire from the switch and, if the monitor is
+  -- in a sync group, sync siblings and show a passive post-switch popup.
+end
+
+local function pickerNavigate(delta)
+  if not popupState.isPicker then return end
+  local count = popupState.pickerSpaceCount or 0
+  if count < 1 then return end
+
+  local new = (popupState.pickerSelectedIndex or 1) + delta
+  if new < 1 then new = count end
+  if new > count then new = 1 end
+  popupState.pickerSelectedIndex = new
+
+  -- TODO(flicker): full canvas rebuild on each keypress. If this feels
+  -- laggy or visually jarring during rapid navigation, switch to in-place
+  -- element mutation (canvas[i].text, canvas[i].frame) and a uniform
+  -- row-height design. See TODO.md "picker canvas flicker" item.
+  buildPopupCanvas(popupState.pickerTriggerUUID, new)
+  pickerResetTimer()
+end
+
+-- Open the interactive picker on the given monitor, starting with
+-- `startingIndex` selected (typically the monitor's current Space).
+local function startPicker(triggerUUID, startingIndex)
+  -- Defensive: if a previous picker never got torn down, clean it up.
+  if popupState.isPicker then pickerDismiss() end
+
+  local screen = hs.screen.find(triggerUUID)
+  if not screen then
+    obj.logger.w("picker: no screen for UUID " .. tostring(triggerUUID))
+    return
+  end
+
+  local count = getSpaceCount(triggerUUID)
+  if count < 1 then
+    obj.logger.w("picker: no Spaces on monitor")
+    return
+  end
+
+  popupState.isPicker            = true
+  popupState.pickerTriggerUUID   = triggerUUID
+  popupState.pickerSelectedIndex = startingIndex or 1
+  popupState.pickerSpaceCount    = count
+
+  buildPopupCanvas(triggerUUID, popupState.pickerSelectedIndex)
+  pickerResetTimer()
+
+  -- Event tap: intercept arrow keys and Return/Escape while picker is up,
+  -- pass everything else through so the user can keep typing in their app.
+  popupState.eventtap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(event)
+    if not popupState.isPicker then return false end
+    local keyCode = event:getKeyCode()
+
+    if keyCode == KEY_UP then
+      pickerNavigate(-1)
+      return true
+    elseif keyCode == KEY_DOWN then
+      pickerNavigate(1)
+      return true
+    elseif keyCode == KEY_RETURN or keyCode == KEY_NUMPAD_ENTER then
+      pickerExecuteSwitch()
+      return true
+    elseif keyCode == KEY_ESCAPE then
+      pickerDismiss()
+      return true
+    end
+    return false  -- passthrough
+  end)
+  popupState.eventtap:start()
+end
+
+-- Expose startPicker to the public API closure below.
+local function openPicker(triggerUUID, startingIndex)
+  startPicker(triggerUUID, startingIndex)
 end
 
 -- ============================================================================
@@ -765,6 +967,7 @@ function obj:start()
   require("hs.settings");    _ = hs.settings.get
   require("hs.dialog");      _ = hs.dialog.textPrompt
   require("hs.mouse");       _ = hs.mouse.getCurrentScreen
+  require("hs.eventtap");    _ = hs.eventtap.new
 
   ensureNamesLoaded()
 
@@ -889,7 +1092,10 @@ function obj:stop()
     state.debounceTimer:stop()
     state.debounceTimer = nil
   end
-  hidePopup()
+  -- pickerDismiss() is idempotent — cleans up the picker eventtap if the
+  -- picker is active, and also clears the canvas/timer. Safer than just
+  -- hidePopup() which would leave a running eventtap in picker mode.
+  pickerDismiss()
   hs.alert.show("SpacesSync: OFF")
   obj.logger.i("Disabled")
   return self
@@ -928,10 +1134,17 @@ end
 
 --- SpacesSync:showNames()
 --- Method
---- Shows the Space-names popup on the monitor under the mouse cursor
---- (or the main monitor as fallback). The popup lists every Space on that
---- monitor with its name, highlighting the currently active one, and fades
---- after `SpacesSync.popupDuration` seconds.
+--- Opens the interactive Space picker on the monitor under the mouse cursor
+--- (or the main monitor as fallback). The picker lists every Space on that
+--- monitor with its name and lets you navigate:
+---
+---  * **↑ / ↓**         — move the selection (wraps)
+---  * **Return / Enter** — switch to the selected Space
+---  * **Escape**        — dismiss without switching
+---  * Any other key     — passes through to the focused app
+---
+--- Auto-dismisses after 5 seconds of no keypresses. The post-switch popup
+--- shown after regular Space switches remains non-interactive.
 ---
 --- Works independently of `:start()` — you can bind this to a hotkey
 --- without enabling sync.
@@ -953,8 +1166,8 @@ function obj:showNames()
 
   local uuid = screen:getUUID()
   local currentSpaceID = hs.spaces.activeSpaceOnScreen(screen)
-  local index = currentSpaceID and getSpaceIndex(uuid, currentSpaceID) or nil
-  showPopup(uuid, index)
+  local index = currentSpaceID and getSpaceIndex(uuid, currentSpaceID) or 1
+  openPicker(uuid, index)
   return self
 end
 

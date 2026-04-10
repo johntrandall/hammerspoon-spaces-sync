@@ -26,6 +26,10 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 - [ ] **macOS 26 Tahoe** — test basic sync behavior once Tahoe ships. hs.spaces uses private APIs that are likely to change. Assume broken until tested.
 
+## Picker polish
+
+- [ ] **Evaluate picker canvas flicker** — the interactive picker (⌃⌥⌘N) rebuilds the entire `hs.canvas` on each arrow keypress via `buildPopupCanvas()`. This is the simple implementation. If rapid navigation feels laggy or visually jarring in practice, switch to in-place element mutation (`canvas[i].text`, `canvas[i].frame`) and a uniform row-height design (so the panel doesn't need to resize between selections). Test by holding Down and watching for flicker.
+
 ## Known Issues
 
 - [ ] **"SpacesSync: ON" status display invisible after `hs.reload()`** — The existing `hs.alert.show("SpacesSync: ON")` in `:start()` fires during init.lua but is either invisible, too brief, or gets dropped because Hammerspoon runs init.lua synchronously *before* NSApplication finishes its first `applicationDidFinishLaunching` cycle. UI created at that moment races the window server handshake.
