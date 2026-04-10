@@ -39,6 +39,25 @@ hs.timer.doAfter(0.3, function()
 end)
 ```
 
+## hs.spaces.watcher callback argument is always -1
+
+The `hs.spaces.watcher.new(callback)` passes an integer to the callback that is documented as the new space ID — but in practice it's always `-1` on macOS 15.x. This is a known issue (see Hammerspoon issues #3250 and #3489, both open as of 2026).
+
+**Fix:** Ignore the callback argument entirely. Inside the callback, call `hs.spaces.activeSpaces()` to get a `{screenUUID: spaceID}` map, then diff against a saved snapshot to find which screen changed.
+
+```lua
+local lastActiveSpaces = hs.spaces.activeSpaces()
+hs.spaces.watcher.new(function()  -- ignore the argument
+  local current = hs.spaces.activeSpaces()
+  for uuid, spaceID in pairs(current) do
+    if lastActiveSpaces[uuid] ~= spaceID then
+      -- this screen changed spaces
+    end
+  end
+  lastActiveSpaces = current
+end):start()
+```
+
 ## hs.spaces.watcher fires for programmatic changes too
 
 The space watcher doesn't distinguish between user-initiated space switches and ones triggered by `gotoSpace()`. If your watcher calls `gotoSpace()`, that triggers the watcher again — infinite loop.
@@ -66,7 +85,27 @@ require("hs.timer")
 
 ## hs.spaces.moveWindowToSpace() is broken on Sequoia
 
-As of macOS 15.5, `hs.spaces.moveWindowToSpace()` does not work. This is a known issue. Workarounds involve click-hold simulation with `hs.eventtap`, which is fragile. Not used in this module but relevant for related window-management work.
+As of macOS 15.5, `hs.spaces.moveWindowToSpace()` does not work. Apple NOP'd three WindowServer functions that the Sonoma 14.5 workaround relied on (confirmed in issue #3698 by the yabai contributor who originally provided the fix). The remaining functions require Dock.app-level rights.
+
+Returns `true` but does nothing. This is different from `gotoSpace()`, which uses accessibility automation of Mission Control rather than private WindowServer APIs — and still works on Sequoia.
+
+Workarounds for window-moving involve click-hold simulation with `hs.eventtap` (fragile), the Drag.spoon approach (AX manipulation of Mission Control, flickery), or shelling out to yabai. Not used in this module but relevant for related window-management work.
+
+## gotoSpace() vs moveWindowToSpace() — different mechanisms
+
+`gotoSpace()` and `moveWindowToSpace()` look similar but work completely differently:
+
+- **`gotoSpace()`:** Uses `hs.axuielement` to programmatically open Mission Control, find the target space button via accessibility APIs, click it, and close Mission Control. This is why it's slow (visible animation). But it also means it's NOT affected by the private WindowServer API breakage — accessibility APIs are more stable.
+
+- **`moveWindowToSpace()`:** Uses private WindowServer functions directly. These got NOP'd in Sequoia.
+
+This is why our module (which uses `gotoSpace()`) still works on Sequoia even though `moveWindowToSpace()` is broken.
+
+## hs.reload() during a sync chain
+
+If `hs.reload()` is triggered mid-sync, the already-dispatched `gotoSpace()` call still completes on the macOS side (macOS doesn't know Hammerspoon reloaded). The new Lua state starts fresh with no `debounceTimer` and `syncInProgress = false`, so the new watcher might see the completed programmatic switch as a user-initiated change.
+
+In practice this is harmless — the resulting sync would be a no-op because all target monitors are already at the correct index. But if you see an unexpected sync right after a reload, this is likely the cause.
 
 ## Monitor position numbers are unstable
 
