@@ -194,20 +194,21 @@ If you find it works (or breaks) on a different version, please open an issue or
 
 ## Logging
 
-All output goes to the Hammerspoon console (open via the menubar icon or `hs -c`).
+All output goes to the **Hammerspoon Console** (open via the menubar icon, or `hs -c 'hs.openConsole()'`).
 
-- **Info level** (default): logs syncs, skips, warnings, errors, version checks, and the position map on start. Enough to see what the Spoon is doing.
+- **Info level** (default): logs syncs, skips, warnings, errors, version checks, and the position map on start.
 - **Debug level** (`spoon.SpacesSync.logger.setLogLevel('debug')`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
 
-You can also tail logs from the terminal:
+### Viewing logs from the terminal
+
+Hammerspoon does **not** write to the macOS unified log, so `log stream --predicate 'process == "Hammerspoon"'` returns nothing. This is a known Hammerspoon limitation ([issue #1684](https://github.com/Hammerspoon/hammerspoon/issues/1684)).
+
+One-shot snapshot of the current Console buffer:
 
 ```bash
-# Live tail
-log stream --predicate 'process == "Hammerspoon"' | grep SpacesSync
-
-# Recent history
-/usr/bin/log show --last 5m --predicate 'process == "Hammerspoon"' | grep SpacesSync
+hs -c 'return hs.console.getConsole()' | grep SpacesSync
 ```
+
 
 ## Debugging from the terminal
 
