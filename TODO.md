@@ -26,6 +26,18 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 - [ ] **macOS 26 Tahoe** — test basic sync behavior once Tahoe ships. hs.spaces uses private APIs that are likely to change. Assume broken until tested.
 
+## Known Issues
+
+- [ ] **"SpacesSync: ON" status display invisible after `hs.reload()`** — The existing `hs.alert.show("SpacesSync: ON")` in `:start()` fires during init.lua but is either invisible, too brief, or gets dropped because Hammerspoon runs init.lua synchronously *before* NSApplication finishes its first `applicationDidFinishLaunching` cycle. UI created at that moment races the window server handshake.
+
+  **Root cause (Verified via source-level research):** Hammerspoon has no `startupCallback` / `readyCallback` / "config loaded" event. Only `hs.shutdownCallback` exists. Confirmed by reading `MJLua.m` and `extensions/_coresetup/_coresetup.lua` in `Hammerspoon/hammerspoon`.
+
+  **Proposed fix (Observed idiom in official Spoons, not yet tested in this repo):**
+  1. Replace `hs.alert.show("SpacesSync: ON")` with a canvas-based status HUD matching the popup's visual style (dark rounded panel, HUD level, 3s duration).
+  2. Defer the call via `hs.timer.doAfter(0, function() showStatusHUD("SpacesSync: ON") end)`. A zero-delay timer yields to the next runloop tick, which is the canonical Hammerspoon idiom for "let the window server settle" (see TurboBoost, MicMute, AClock, FadeLogo Spoons). **Not** `doAfter(0.1)` — that's magic-number padding.
+  3. Update `dev-docs/hammerspoon-and-spaces-quirks.md` with a new section documenting the init-time canvas visibility race and the `doAfter(0)` workaround.
+  4. (Optional) File an upstream feature request for `hs.startupCallback` as a symmetric counterpart to `hs.shutdownCallback`. No existing issue today.
+
 ## Features
 
 - [ ] Publish to GitHub
