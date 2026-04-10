@@ -115,11 +115,15 @@ macOS assigns display numbers (the parenthetical in names like "LG SDQHD (2)") a
 
 ## No "reload complete" callback — use doAfter(0) for init-time UI
 
-Hammerspoon has no `startupCallback` / `readyCallback` / "config loaded" event. The only lifecycle hook is `hs.shutdownCallback` (fires when the Lua environment is being destroyed, either on exit or reload). Verified at source level by reading `MJLua.m` and `extensions/_coresetup/_coresetup.lua` in `Hammerspoon/hammerspoon`.
+Hammerspoon has no `startupCallback` / `readyCallback` / "config loaded" event. The only lifecycle hook is `hs.shutdownCallback` (fires when the Lua environment is being destroyed, either on exit or reload).
 
-The consequence: `init.lua` runs synchronously inside `MJLuaInit()`, *before* NSApplication finishes its first `applicationDidFinishLaunching` cycle. UI objects (`hs.canvas`, `hs.drawing`, etc.) created at that moment race the window server handshake — they get constructed successfully but `:show()` is silently dropped. The symptom is an `hs.alert` or canvas that fires during init but is never visible on screen, even though the Lua calls return without error.
+**Verified** at runtime (`hs -c` introspection of the `hs` table) and at source level (current `master` of `Hammerspoon/hammerspoon`) by reading `MJLua.m`, `MJAppDelegate.m`, `extensions/_coresetup/_coresetup.lua`, and `extensions/canvas/libcanvas.m`. The only C→Lua lifecycle callbacks are `accessibilityStateCallback`, `dockIconClickCallback`, `fileDroppedToDockIconCallback`, `textDroppedToDockIconCallback`, and `shutdownCallback`. `hs.canvas` has no `waitForWindowServer` / `showWhenReady` / async-show variant.
 
-**Fix:** Defer the UI call to the next runloop iteration with `hs.timer.doAfter(0, ...)`. A zero-delay timer is the canonical Hammerspoon idiom for "yield once and resume on the next tick" — by that tick, init.lua has returned and NSApplication has processed its first batch of events, so window-server state is stable.
+### Why `:show()` silently fails during init.lua
+
+`applicationDidFinishLaunching:` in `MJAppDelegate.m` calls `MJLuaCreate()` near the end of its own body. `MJLuaCreate()` runs `setup.lua` which loads and executes `init.lua` **synchronously, still inside the delegate method**. Because Lua runs inside an AppKit delegate callback, the main runloop does not get a chance to pump any pending events until `applicationDidFinishLaunching:` returns. A `canvas:show()` in `init.lua` therefore reaches `[canvasWindow makeKeyAndOrderFront:nil]` before the window server has completed its handshake with the new NSWindow — the call returns without error, but the window never becomes visible.
+
+### Fix: defer to the next runloop tick with `doAfter(0)`
 
 ```lua
 -- BAD: canvas created in init.lua is silently dropped after hs.reload()
@@ -135,11 +139,15 @@ function obj:start()
 end
 ```
 
-**Not** `hs.timer.doAfter(0.1, ...)` — that's magic-number padding. The `0` version is semantically correct: it means "yield to the runloop once." The official Spoons (`TurboBoost`, `MicMute`, `AClock`, `FadeLogo`, `InputMethodIndicator`) all use `doAfter(0)` for the same pattern.
+A zero-delay `hs.timer` is the canonical Hammerspoon idiom for "yield once and resume on the next main-queue tick." By that tick, `applicationDidFinishLaunching:` has returned, AppKit has pumped a round of events, and the window server is ready to display newly-created windows. Used throughout the official Spoons repo (`TurboBoost`, `MicMute`, `AClock`, `FadeLogo`, `InputMethodIndicator`) for the same class of problem.
 
-`hs.alert.show()` from init.lua usually works because it uses a different backing mechanism that handles deferral internally — but even `hs.alert` is unreliable immediately after `hs.reload()` for the same reason. When in doubt, defer with `doAfter(0)`.
+**Not** `hs.timer.doAfter(0.1, ...)` — that's magic-number padding. The `0` version is semantically correct: it means "yield to the runloop once."
 
-If Hammerspoon ever adds an `hs.startupCallback` symmetric to `hs.shutdownCallback`, this section can be deleted. No upstream issue exists today; it would be a clean feature request.
+`hs.alert.show()` from init.lua usually works because it goes through a separate path that handles deferral internally — but it can still be unreliable immediately after `hs.reload()`. When in doubt, defer with `doAfter(0)`.
+
+### Upstream feature request
+
+If Hammerspoon adds an `hs.startupCallback` symmetric to `hs.shutdownCallback`, this entire section can be deleted. The fix is straightforward — after `MJLuaCreate()` in `applicationDidFinishLaunching:`, schedule a `callStartupCallback()` helper via `dispatch_async(dispatch_get_main_queue(), ...)` so it fires on the next main-queue tick (i.e., after the delegate method has returned and the runloop has pumped). Three to five lines of code. No upstream issue existed as of 2026-04-10 — filing one would be a clean contribution.
 
 ## Hammerspoon API conventions
 
