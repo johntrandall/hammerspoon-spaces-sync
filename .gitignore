@@ -6,3 +6,6 @@ dev-docs/agent-registry.md
 dev-docs/project-index.md
 .claude/settings.local.json
 .claude/worktrees/
+
+# Demo videos — live on the `multimedia-wip` branch on umbridge only
+assets/*.mp4
