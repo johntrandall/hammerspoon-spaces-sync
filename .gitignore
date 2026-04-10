@@ -3,3 +3,5 @@
 .spaces-sync-config.lua
 dev-docs/local-settings-audit-*.md
 dev-docs/agent-registry.md
+.claude/settings.local.json
+.claude/worktrees/
