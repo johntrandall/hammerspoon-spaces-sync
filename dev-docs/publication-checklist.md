@@ -2,6 +2,12 @@
 
 Run through this before publishing a new version of SpacesSync.
 
+## Reference
+
+- [Hammerspoon SPOONS.md](https://github.com/Hammerspoon/hammerspoon/blob/master/SPOONS.md) — Spoon specification (directory structure, API conventions, metadata)
+- [Hammerspoon CONTRIBUTING.md](https://github.com/Hammerspoon/hammerspoon/blob/master/CONTRIBUTING.md#contributing-to-the-extensions) — extension contribution guidelines
+- [Hammerspoon/Spoons PR #361](https://github.com/Hammerspoon/Spoons/pull/361) — our upstream PR
+
 ## Code Quality
 
 - [ ] All `hs.logger` calls use correct levels (`.e` for errors, `.w` for warnings, `.i` for info, `.d` for debug)
@@ -93,9 +99,9 @@ cp ~/dev/macos-spaces-multimonitor-sync-hammerspoon/Source/SpacesSync.spoon/docs
 zip -r SpacesSync.spoon.zip SpacesSync.spoon/
 
 # Create the release (bump version tag as needed)
-gh release create v1.x /tmp/SpacesSync.spoon.zip \
+gh release create vX.Y /tmp/SpacesSync.spoon.zip \
   --repo johntrandall/hammerspoon-spaces-sync \
-  --title "SpacesSync v1.x" \
+  --title "SpacesSync vX.Y" \
   --notes "Release notes here"
 
 # Clean up
