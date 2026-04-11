@@ -32,7 +32,15 @@ Settings marked as logically inferred or suspected need isolated testing — tog
 
 ## Upstream requests
 
-- [ ] **File issue for `hs.startupCallback`** (optional, Low priority) — Hammerspoon has `hs.shutdownCallback` but no symmetric startup hook. Adding one would eliminate the `doAfter(0)` workaround documented in `dev-docs/hammerspoon-and-spaces-quirks.md`. Clean one-function ask against `MJLua.m`. No existing issue today.
+- [ ] **Upstream request: `hs.startupCallback`** (drafted, not sent) — Hammerspoon has `hs.shutdownCallback` but no symmetric startup hook. Adding one would eliminate the `doAfter(0)` workaround documented in `dev-docs/hammerspoon-and-spaces-quirks.md`. Clean one-function ask against `MJLua.m`.
+
+  **Research (Verified 2026-04-10, source-level + runtime introspection):** No such callback exists in current `master`. Confirmed by reading `MJLua.m`, `MJAppDelegate.m`, `_coresetup.lua`, `libcanvas.m` and by `hs -c` introspection of the `hs` table. The only C→Lua lifecycle callbacks are the five documented ones (`accessibilityStateCallback`, `dockIconClickCallback`, `textDroppedToDockIconCallback`, `fileDroppedToDockIconCallback`, `shutdownCallback`). `hs.canvas` has no `waitForWindowServer` / `showWhenReady` / async-show variant. No existing issue, PR, or Discussion mentions this.
+
+  **Drafted but NOT sent — review and send when ready:**
+  * GitHub issue body: [`dev-docs/drafts/upstream-hs-startup-callback-github-issue.md`](dev-docs/drafts/upstream-hs-startup-callback-github-issue.md) — title `Feature request: hs.startupCallback symmetric to hs.shutdownCallback`. File via `gh issue create --repo Hammerspoon/hammerspoon --title "..." --body-file dev-docs/drafts/upstream-hs-startup-callback-github-issue.md`.
+  * Discord draft: [`dev-docs/drafts/upstream-hs-startup-callback-discord.md`](dev-docs/drafts/upstream-hs-startup-callback-discord.md) — shorter, chat-appropriate, asks "am I missing something?" before filing. Post in `#hammerspoon` on https://discord.gg/vxchqkRbkR (the official server — confirmed active, maintainers present).
+
+  **Recommended send sequence:** Post the Discord message first for a fast informed opinion. Wait 24-48 hours. File the GitHub issue regardless — chat answers aren't durable and future users searching for this problem need the permanent record. Google Group (`groups.google.com/g/hammerspoon`) is the secondary fallback; maintainer posted there as recently as Dec 2025. GitHub Discussions is technically enabled but nearly dormant.
 
 ## Design decisions to revisit
 
