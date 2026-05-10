@@ -189,6 +189,7 @@ local state = {
   spaceWatcher = nil,
   debounceTimer = nil,
   pendingSyncTimer = nil,  -- tracks the chained doAfter in syncNext
+  watchdogTimer = nil,     -- safety timer for stuck syncInProgress (item 7)
   osBlocked = false,
 }
 
@@ -948,6 +949,54 @@ local function syncTarget(triggerUUID, triggerSpaceID, targetUUID)
 end
 
 -- ============================================================================
+-- WATCHDOG (item 7)
+-- ============================================================================
+--
+-- Stage-2 transient shape: single state.watchdogTimer field, hard-coded 8 s
+-- bound. Stage 3 will refactor to register the watchdog inside
+-- state.chainTimers along with the new poll timers and capture
+-- state.chainGeneration. For now: fires if state.syncInProgress stays true
+-- for longer than the bound (covers unhandled errors anywhere in the chain).
+--
+-- Bound rationale: with a 4-display group (3 targets) and v3's pollTimeout
+-- ≈ 2 s per target, worst-case chain duration is ~6 s. 8 s = 6 s + ≥ 1 s
+-- safety margin. v0.2 chains finish faster (3 × 0.3 s = 0.9 s + 0.8 s
+-- debounce), so 8 s is comfortably above the worst case in either world.
+
+local WATCHDOG_BOUND_S = 8.0
+
+local function cancelWatchdog()
+  if state.watchdogTimer then
+    state.watchdogTimer:stop()
+    state.watchdogTimer = nil
+  end
+end
+
+local function startWatchdog()
+  cancelWatchdog()
+  state.watchdogTimer = hs.timer.doAfter(WATCHDOG_BOUND_S, function()
+    state.watchdogTimer = nil
+    if not state.syncInProgress then return end
+    obj.logger.e("Sync watchdog fired — flag was stuck after " ..
+                 WATCHDOG_BOUND_S .. "s; chain abandoned")
+    -- Stop any remaining chain-owned timers (defensive — they should already
+    -- be drained by now, but cheap insurance).
+    if state.pendingSyncTimer then
+      state.pendingSyncTimer:stop()
+      state.pendingSyncTimer = nil
+    end
+    if state.debounceTimer then
+      state.debounceTimer:stop()
+      state.debounceTimer = nil
+    end
+    -- Refresh baseline so the next watcher fire diffs against truth.
+    state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+    -- Clear the gate LAST (same ordering rationale as BAIL_CHAIN / :stop).
+    state.syncInProgress = false
+  end)
+end
+
+-- ============================================================================
 -- WATCHER
 -- ============================================================================
 
@@ -1019,8 +1068,16 @@ local function setupWatcher()
     obj.logger.i("SYNC: " .. getDisplayLabel(changedUUID) .. " (trigger) -> index " .. tostring(newIndex) .. " | targets: " .. table.concat(targetNames, ", "))
 
     state.syncInProgress = true
+    startWatchdog()
 
     local function syncNext(i)
+      -- Item 6: bail if :stop() ran while this chain was queued.
+      -- (Stage 3 will also add a chainGeneration check here.)
+      if not state.enabled then
+        obj.logger.d("syncNext: bailing — disabled mid-chain")
+        return
+      end
+
       if i > #targets then
         -- (item 9a fix: removed redundant state.lastActiveSpaces write here —
         -- the debounce-timer callback below overwrites it ~0.8 s later anyway.)
@@ -1042,6 +1099,7 @@ local function setupWatcher()
         state.debounceTimer = hs.timer.doAfter(obj.debounceSeconds, function()
           state.syncInProgress = false
           state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+          cancelWatchdog()
           obj.logger.d("Watcher re-enabled")
         end)
         return
@@ -1211,6 +1269,19 @@ function obj:start()
 
   checkEnvironment()
 
+  -- Item 4: hard block on missing Accessibility. hs.spaces.gotoSpace and
+  -- hs.eventtap (the picker) both require Accessibility permission. Without
+  -- it gotoSpace silently no-ops and there is no in-band signal of the
+  -- failure — better to fail loudly here than to look broken at runtime.
+  if not hs.accessibilityState(true) then
+    obj.logger.e("Accessibility permission required. Grant it in " ..
+                 "System Settings > Privacy & Security > Accessibility, " ..
+                 "then restart Hammerspoon.")
+    hs.alert.show("SpacesSync: Accessibility permission required")
+    state.osBlocked = true
+    return self
+  end
+
   if state.osBlocked then
     obj.logger.e("Environment checks failed. Space sync will not activate.")
     hs.alert.show("SpacesSync: blocked (see console)")
@@ -1278,9 +1349,13 @@ end
 --- Returns:
 ---  * The SpacesSync object
 function obj:stop()
-  state.enabled = false
-  state.syncInProgress = false
-  stopWatcher()
+  -- Item 6: ordering matters. Stop chain-owned timers first and refresh the
+  -- baseline BEFORE setting state.enabled = false. Any spaces-watcher fire
+  -- arriving mid-restore is still suppressed by the existing enabled? guard,
+  -- so the baseline is restored to truth without a half-written intermediate
+  -- state leaking through. Stage 3 also bumps chainGeneration here.
+  --
+  -- 1. Stop chain-owned timers.
   if state.pendingSyncTimer then
     state.pendingSyncTimer:stop()
     state.pendingSyncTimer = nil
@@ -1289,6 +1364,23 @@ function obj:stop()
     state.debounceTimer:stop()
     state.debounceTimer = nil
   end
+  cancelWatchdog()
+
+  -- 2. Refresh baseline so the next :start (or any in-flight watcher fire)
+  --    diffs against truth, not whatever stale view the chain left behind.
+  state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+
+  -- 3. Clear in-progress flag.
+  state.syncInProgress = false
+
+  -- 4. Stop the spaces watcher (no more new fires after this).
+  stopWatcher()
+
+  -- 5. Disable LAST. Until this point, the in-flight syncNext closure (if
+  --    any) sees state.enabled == true and uses the same guards as a normal
+  --    fire; after this, the closure's top-of-tick check (item 6) bails.
+  state.enabled = false
+
   -- showStatusHUD() internally calls pickerDismiss() which is idempotent
   -- and also clears any canvas/timer. Safe to call without first hiding
   -- any prior popup or picker.
