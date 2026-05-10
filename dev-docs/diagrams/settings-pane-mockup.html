@@ -750,6 +750,46 @@
       </div>
 
       <!-- ============================================================
+           Group Labels — one editable label per letter A..J. Sparse:
+           a labeled group renders as "A: Code" in the dropdown; an
+           unlabeled group renders as "Group A". Empty groups dim
+           visually but stay editable so the user can pre-label
+           before assigning members.
+           ============================================================ -->
+      <h3>Group Labels</h3>
+      <div class="section-hint">
+        Each group has a default name (Group A, Group B, …). Set an
+        optional label to override the default — labeled groups display
+        as "Letter: Label" in the dropdown below. Letters are stable
+        IDs; labels are display-only.
+      </div>
+      <div class="inset">
+        <div class="label-row">
+          <span class="letter"><span class="chip a"></span>A</span>
+          <input class="label-input" type="text" value="Code">
+          <span class="member-count">2 displays</span>
+        </div>
+        <div class="label-row">
+          <span class="letter"><span class="chip b"></span>B</span>
+          <input class="label-input" type="text" value="" placeholder="Group B  (default)">
+          <span class="member-count">1 display</span>
+        </div>
+        <div class="label-row dim">
+          <span class="letter"><span class="chip c"></span>C</span>
+          <input class="label-input" type="text" value="Reference" placeholder="Group C  (default)">
+          <span class="member-count">empty</span>
+        </div>
+        <div class="label-row dim">
+          <span class="letter"><span class="chip d"></span>D</span>
+          <input class="label-input" type="text" value="" placeholder="Group D  (default)">
+          <span class="member-count">empty</span>
+        </div>
+        <div class="label-row">
+          <div class="show-more">▾ Show 6 more groups (E – J)</div>
+        </div>
+      </div>
+
+      <!-- ============================================================
            Group Membership — per-display assignment from a fixed pool
            of 10 groups (A through J). All 10 always exist; users
            assign positions to whichever letter they want. Empty groups
@@ -836,13 +876,13 @@
         </div>
         <!-- Stale entry: position 5 was assigned to a group in
              SpacesSync.json but no display sits at position 5 right now.
-             Storing display name + UUID + last-seen date in `_lastSeen`
-             gives the user a useful identification and timeline rather
-             than just "not detected". -->
+             _lastSeen captures display name + UUID + last-seen date +
+             prior group letter so the user gets a useful timeline plus
+             the prior assignment, not just "not detected". -->
         <div class="group-row">
           <div class="pos">position 5</div>
           <div class="display-name" style="font-style: italic; color: var(--text-tertiary)">
-            LG SDQHD #5 — last seen 2026-04-12
+            LG SDQHD #5 — last seen 2026-04-12, was in <span style="color: var(--text-secondary); font-style: normal">A: Code</span>
           </div>
           <div class="stale-warn">⚠ not currently connected</div>
         </div>
@@ -850,46 +890,7 @@
       <div class="footnote" style="margin-top: 10px;">
         Ten groups (A–J) always exist. Assign a position to use a group;
         leaving a group empty removes its members but keeps the slot
-        available. Set an optional label below.
-      </div>
-
-      <!-- ============================================================
-           Group Labels — one editable label per letter A..J. Sparse:
-           a labeled group renders as "A: Code" in the dropdown; an
-           unlabeled group renders as "Group A". Empty groups dim
-           visually but stay editable so the user can pre-label
-           before assigning members.
-           ============================================================ -->
-      <h3>Group Labels</h3>
-      <div class="section-hint">
-        Optional. Labeled groups display as "Letter: Label" in the
-        membership dropdown. Letters are stable IDs; labels are
-        display-only.
-      </div>
-      <div class="inset">
-        <div class="label-row">
-          <span class="letter"><span class="chip a"></span>A</span>
-          <input class="label-input" type="text" value="Code">
-          <span class="member-count">2 displays</span>
-        </div>
-        <div class="label-row">
-          <span class="letter"><span class="chip b"></span>B</span>
-          <input class="label-input" type="text" value="" placeholder="No label — displays as “Group B”">
-          <span class="member-count">1 display</span>
-        </div>
-        <div class="label-row dim">
-          <span class="letter"><span class="chip c"></span>C</span>
-          <input class="label-input" type="text" value="Reference" placeholder="No label">
-          <span class="member-count">empty</span>
-        </div>
-        <div class="label-row dim">
-          <span class="letter"><span class="chip d"></span>D</span>
-          <input class="label-input" type="text" value="" placeholder="No label">
-          <span class="member-count">empty</span>
-        </div>
-        <div class="label-row">
-          <div class="show-more">▾ Show 6 more groups (E – J)</div>
-        </div>
+        available. Set an optional label in the Group Labels section above.
       </div>
 
       <!-- ============================================================

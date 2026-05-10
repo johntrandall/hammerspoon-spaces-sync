@@ -26,6 +26,7 @@ flowchart TB
         subgraph New [Proposed]
             ConfigMod[Config Module<br/>config.lua<br/>load / save / validate<br/>pathwatcher<br/>groupOf ↔ syncGroups]:::proposed
             SettingsPane[Settings Pane<br/>hs.webview<br/>HTML form + JS bridge]:::proposed
+            ScreenWatch[Screen Watcher<br/>hs.screen.watcher<br/>＊new＊ writes _lastSeen<br/>on disconnect]:::proposed
         end
     end
 
@@ -49,6 +50,9 @@ flowchart TB
 
     SettingsPane -->|register| Shutdown
     ConfigMod -->|register| Shutdown
+
+    ScreenWatch -->|on disconnect:<br/>writeLastSeen| ConfigMod
+    ScreenWatch -->|on connect:<br/>rebuildPositionMap| Engine
 
     Watcher -->|fires on Space change| SyncEng
     SyncEng --> GroupLook

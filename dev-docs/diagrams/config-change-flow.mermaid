@@ -56,7 +56,7 @@ sequenceDiagram
         Cfg->>Spoon: pendingConfig set to state
     else engine is idle
         Cfg->>Spoon: applyConfig state
-        Spoon->>Spoon: rebuildPositionMap<br/>syncGroups updated<br/>switchDelay updated
+        Spoon->>Spoon: rebuildPositionMap<br/>syncGroups updated<br/>switchDelay updated<br/>bindHotkeys (always — idempotent)
 
         alt enabled changed off to on
             Spoon->>Watcher: setupWatcher
@@ -75,3 +75,16 @@ sequenceDiagram
     end
 
     Note over Spoon,Watcher: Debounce timer fires existing path.<br/>If pendingConfig set, drain via applyConfig.<br/>Otherwise clear syncInProgress as today.
+
+    rect rgba(120, 100, 180, 0.10)
+        Note over User,JSON: Path C — Display connect/disconnect (independent of A and B)
+        User->>Spoon: plug or unplug a display
+        Note right of Spoon: hs.screen.watcher fires
+        Spoon->>Spoon: diff prev vs current screens
+        alt display disconnected
+            Spoon->>Cfg: writeLastSeen position name uuid date
+            Cfg->>JSON: save (sparse _lastSeen update only)
+        else display connected
+            Spoon->>Spoon: rebuildPositionMap<br/>position rejoins groupOf if previously assigned
+        end
+    end

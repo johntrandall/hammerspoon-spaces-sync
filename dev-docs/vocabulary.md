@@ -69,7 +69,9 @@ Displays not in any sync group are **independent** — SpacesSync never moves th
 
 **Why 10:** more than enough for any current Mac with comfortable buffer. Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. The fixed cap eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
 
-**Display labels:** each group has an **optional** label in `groupLabels` (sparse map, only contains entries for labeled groups). When a label exists, it displays as "A: Code". When absent, the row shows "Group A" — the letter doubles as the default label. Labels are user-editable in the settings pane's Group Labels section.
+**Default name:** every group has a default display name of `"Group <letter>"` — Group A, Group B, Group C, …, Group J. This is the fallback shown anywhere a group is rendered with no user-set label.
+
+**Custom label (optional):** each group can have an **optional** user-set label in `groupLabels` — a sparse map containing only entries for labeled groups. When a label exists, the group renders as `"<letter>: <label>"` (e.g. "A: Code"). When absent, it falls back to the default name (e.g. "Group A"). Labels are user-editable in the settings pane's Group Labels section.
 
 ### Display set ＊roadmap, not in v1＊
 A physical arrangement of displays. Think "my home desk" vs "my office desk" — different hardware, different number of monitors, different layouts. **The current Spoon does not model display sets.** This entry exists to reserve the term for a future feature where the user could keep multiple `groupOf` configurations and switch between them when their hardware setup changes. Do not surface "display set" in any user-facing copy until that feature exists — using the term now misleads users into expecting profile switching.
@@ -158,7 +160,7 @@ The runtime list-of-lists derived from `groupOf` — what the sync engine consum
 Engine-internal flags. `syncInProgress` is true during a sync chain; while true, config edits are stashed in `pendingConfig` and drained by the debounce callback (avoids corrupting `lastActiveSpaces` baseline mid-flight).
 
 ### `_lastSeen`
-JSON field. Map from position number to `{ name, uuid, date }` for displays that *were* configured at some point but aren't currently connected. Used by the settings pane to show stale entries with useful context ("LG SDQHD #5 — last seen 2026-04-12") rather than anonymous warnings.
+JSON field. Map from position number to `{ name, uuid, date, wasIn }` for displays that *were* configured at some point but aren't currently connected. `wasIn` is the group letter the position was last assigned to. Used by the settings pane to show stale entries with useful context ("LG SDQHD #5 — last seen 2026-04-12, was in A: Code") rather than anonymous warnings. Written by the screen-watcher on disconnect events; cleared when a position rejoins.
 
 ---
 
