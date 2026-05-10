@@ -96,18 +96,49 @@ end
 ---  * `{ {1, 2, 3} }` — three displays sync together
 obj.syncGroups = { { 1, 2 } }
 
+--- SpacesSync.pollTimeout
+--- Variable
+--- Maximum seconds to wait for a single `hs.spaces.gotoSpace()` to verify
+--- on the target display before continuing to the next target. v3 replaces
+--- the v0.2 fixed `switchDelay` with poll-based verification: after each
+--- dispatch, `hs.spaces.activeSpaceOnScreen()` is polled until it reports
+--- the expected Space ID, or this timeout elapses.
+---
+--- Calibrated empirically (see `dev-docs/findings/F-010-polling-model-a-vs-b.md`):
+--- mean Mission Control flip latency on macOS 15.7.5 is ~753 ms; the largest
+--- observed flip was ~898 ms. 2.0 s gives ≈ 2.5x headroom for slow-settle
+--- conditions. On timeout, a WARN log is emitted per affected target and
+--- the chain continues — the end-of-chain verifier catches the drift.
+---
+--- Default value: `2.0`
+obj.pollTimeout = 2.0
+
+--- SpacesSync.pollInterval
+--- Variable
+--- Polling cadence for verifying each `hs.spaces.gotoSpace()` dispatch.
+--- The runloop will quantize sub-10 ms intervals; in practice this is
+--- effectively the lower bound on per-tick work. 30 ms adds at most one
+--- tick of post-flip latency to a successful verify.
+---
+--- Default value: `0.030`
+obj.pollInterval = 0.030
+
 --- SpacesSync.switchDelay
 --- Variable
---- Delay in seconds between each `hs.spaces.gotoSpace()` call.
---- macOS silently drops rapid back-to-back space switches.
+--- **Deprecated in v3** — superseded by `pollTimeout` (poll-based verify
+--- replaces fixed wait between dispatches). The value is parsed but
+--- ignored; a deprecation warning is logged at `:start()`. Will be
+--- removed in a future release.
 ---
 --- Default value: `0.3`
 obj.switchDelay = 0.3
 
 --- SpacesSync.debounceSeconds
 --- Variable
---- Seconds to wait after all switches complete before re-enabling the watcher.
---- Prevents the watcher from reacting to our own programmatic space switches.
+--- **Deprecated in v3** — superseded by per-target observed-value writes
+--- that absorb echoes by keeping `lastActiveSpaces` matched to macOS
+--- truth. The value is parsed but ignored; a deprecation warning is
+--- logged at `:start()`. Will be removed in a future release.
 ---
 --- Default value: `0.8`
 obj.debounceSeconds = 0.8
@@ -187,10 +218,14 @@ local state = {
   lastActiveSpaces = {},
   syncInProgress = false,
   spaceWatcher = nil,
-  debounceTimer = nil,
-  pendingSyncTimer = nil,  -- tracks the chained doAfter in syncNext
-  watchdogTimer = nil,     -- safety timer for stuck syncInProgress (item 7)
+
+  -- v3 chain machinery (items 0a, 1, 7)
+  chainGeneration = 0,    -- bumped at chain start, BAIL_CHAIN, watchdog fire, :stop()
+  chainTimers = {},       -- list of all chain-owned hs.timer handles
+  watchdogTimer = nil,    -- safety timer (also lives in chainTimers)
+
   osBlocked = false,
+  lastVerifierResult = nil,  -- { timestamp, mismatches } for :status() (item 10)
 }
 
 local positionToUUID = {}
@@ -900,106 +935,387 @@ end
 -- ============================================================================
 -- SYNC ENGINE
 -- ============================================================================
+--
+-- v3 verify-based chain. The chain runs from runSyncChain(), which:
+--   * Bumps state.chainGeneration and captures `myGen` so any closure that
+--     was queued before BAIL_CHAIN/:stop()/watchdog can detect "I was
+--     bailed" on its next tick (item 0a).
+--   * Computes expectedEndState — a per-display UUID -> Space ID map of
+--     what the world should look like at chain end (item 0). This single
+--     map drives both per-target dispatch and end-of-chain verification.
+--   * Iterates targets via syncNext, doing skip-or-dispatch -> poll-verify
+--     -> observed-value write per target (items 1, 2). No inter-dispatch
+--     wait — F-010 confirmed Model B (160/160 dispatches at gap=0).
+--   * On finish: POPUP, end-of-chain VERIFY, then CLEAR (items 5, 5b).
+--
+-- chainTimers is a single list of every timer the chain owns (poll
+-- timers + watchdog). One cancellation site (cancelChainTimers) drains
+-- them all at chain end / BAIL_CHAIN / :stop() / watchdog fire.
 
-local function syncTarget(triggerUUID, triggerSpaceID, targetUUID)
-  local label = getDisplayLabel(targetUUID)
-  local targetCount = getSpaceCount(targetUUID)
-
-  local triggerIndex = getSpaceIndex(triggerUUID, triggerSpaceID)
-  if not triggerIndex then
-    obj.logger.d("  " .. label .. ": SKIP (trigger space index not found)")
-    return
+local function registerChainTimer(timer)
+  if timer then
+    table.insert(state.chainTimers, timer)
   end
+end
 
-  if triggerIndex > targetCount then
-    obj.logger.i("  " .. label .. " (" .. targetCount .. " spaces): SKIP (no space at index " .. triggerIndex .. ")")
-    return
+local function cancelChainTimers()
+  for _, t in ipairs(state.chainTimers) do
+    pcall(function() t:stop() end)
   end
-
-  local targetSpaceID = getSpaceAtIndex(targetUUID, triggerIndex)
-  if not targetSpaceID then
-    obj.logger.d("  " .. label .. ": SKIP (getSpaceAtIndex returned nil)")
-    return
-  end
-
-  local targetScreen = hs.screen.find(targetUUID)
-  if not targetScreen then
-    obj.logger.d("  " .. label .. ": SKIP (display not found)")
-    return
-  end
-
-  local currentSpace = hs.spaces.activeSpaceOnScreen(targetScreen)
-  local currentIdx = getSpaceIndex(targetUUID, currentSpace) or "?"
-  if currentSpace == targetSpaceID then
-    obj.logger.d("  " .. label .. ": already at index " .. triggerIndex)
-    return
-  end
-
-  obj.logger.i("  " .. label .. ": index " .. tostring(currentIdx) .. " -> " .. triggerIndex)
-
-  local ok, err = pcall(function()
-    hs.spaces.gotoSpace(targetSpaceID)
-  end)
-
-  if ok then
-    obj.logger.d("  " .. label .. ": dispatched")
-  else
-    obj.logger.e("  " .. label .. ": ERROR — " .. tostring(err))
-  end
+  state.chainTimers = {}
+  state.watchdogTimer = nil
 end
 
 -- ============================================================================
 -- WATCHDOG (item 7)
 -- ============================================================================
 --
--- Stage-2 transient shape: single state.watchdogTimer field, hard-coded 8 s
--- bound. Stage 3 will refactor to register the watchdog inside
--- state.chainTimers along with the new poll timers and capture
--- state.chainGeneration. For now: fires if state.syncInProgress stays true
--- for longer than the bound (covers unhandled errors anywhere in the chain).
+-- Fires if state.syncInProgress stays true longer than the bound — covers
+-- unhandled errors anywhere in the chain. Registered in chainTimers and
+-- captures state.chainGeneration so it no-ops if a new chain has started
+-- since this watchdog was scheduled.
 --
--- Bound rationale: with a 4-display group (3 targets) and v3's pollTimeout
--- ≈ 2 s per target, worst-case chain duration is ~6 s. 8 s = 6 s + ≥ 1 s
--- safety margin. v0.2 chains finish faster (3 × 0.3 s = 0.9 s + 0.8 s
--- debounce), so 8 s is comfortably above the worst case in either world.
+-- Bound: numTargets × pollTimeout + safety_margin. Worst case for a
+-- 4-display group (3 targets) at pollTimeout=2s is 6s; bound = 8s = 6 + 2.
+-- The bound deliberately does NOT include the popup display window — the
+-- popup is fire-and-forget; the watchdog is only protecting the chain.
 
-local WATCHDOG_BOUND_S = 8.0
-
-local function cancelWatchdog()
+local function startWatchdog(myGen)
+  -- Cancel any previous watchdog (defensive — it should already be in
+  -- chainTimers and drained by now).
   if state.watchdogTimer then
-    state.watchdogTimer:stop()
+    pcall(function() state.watchdogTimer:stop() end)
     state.watchdogTimer = nil
   end
-end
-
-local function startWatchdog()
-  cancelWatchdog()
-  state.watchdogTimer = hs.timer.doAfter(WATCHDOG_BOUND_S, function()
+  -- Scale to pollTimeout in case the user lowered it for testing.
+  local bound = math.max(8.0, 3 * obj.pollTimeout + 2.0)
+  local timer = hs.timer.doAfter(bound, function()
     state.watchdogTimer = nil
+    -- Generation guard: a new chain has already started; let its watchdog
+    -- handle that one.
+    if myGen ~= state.chainGeneration then return end
     if not state.syncInProgress then return end
+
     obj.logger.e("Sync watchdog fired — flag was stuck after " ..
-                 WATCHDOG_BOUND_S .. "s; chain abandoned")
-    -- Stop any remaining chain-owned timers (defensive — they should already
-    -- be drained by now, but cheap insurance).
-    if state.pendingSyncTimer then
-      state.pendingSyncTimer:stop()
-      state.pendingSyncTimer = nil
-    end
-    if state.debounceTimer then
-      state.debounceTimer:stop()
-      state.debounceTimer = nil
-    end
-    -- Refresh baseline so the next watcher fire diffs against truth.
+                 string.format("%.1f", bound) .. "s; chain abandoned")
+
+    -- Action sequence (mirrors BAIL_CHAIN / :stop ordering):
+    -- 1. Bump chainGeneration so any closure still queued bails on next tick.
+    state.chainGeneration = state.chainGeneration + 1
+    -- 2. Stop any remaining chainTimers (defensive — should already be drained).
+    cancelChainTimers()
+    -- 3. Refresh state.lastActiveSpaces so the next watcher fire diffs against truth.
     state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
-    -- Clear the gate LAST (same ordering rationale as BAIL_CHAIN / :stop).
+    -- 4. Set state.syncInProgress = false LAST.
     state.syncInProgress = false
   end)
+  state.watchdogTimer = timer
+  registerChainTimer(timer)
+end
+
+-- ============================================================================
+-- END-OF-CHAIN VERIFIER (item 5b)
+-- ============================================================================
+--
+-- Diff actual vs expectedEndState at chain end. Logs ERROR per mismatch
+-- and refreshes state.lastActiveSpaces from actual so the next watcher
+-- fire diffs against truth (the invariant "lastActiveSpaces matches
+-- macOS" is restored even after a partial chain). Records a one-shot
+-- summary into state.lastVerifierResult for :status() (item 10).
+--
+-- Scope: runs ONLY on the sync-group path (per council scope reduction).
+-- NO_CHANGE confirmed nothing changed; INDEPENDENT didn't dispatch
+-- anything; reconfig (Stage 4) already rebuilds baseline from scratch.
+
+local function verifyEndState(expectedEndState)
+  local actual = hs.spaces.activeSpaces() or {}
+  local mismatches = {}
+
+  for uuid, expectedSpaceID in pairs(expectedEndState) do
+    local actualSpaceID = actual[uuid]
+    if actualSpaceID == nil then
+      table.insert(mismatches, { uuid = uuid, kind = "vanished" })
+    elseif actualSpaceID ~= expectedSpaceID then
+      table.insert(mismatches, {
+        uuid = uuid, kind = "wrong-space",
+        expectedIdx = getSpaceIndex(uuid, expectedSpaceID) or "?",
+        actualIdx   = getSpaceIndex(uuid, actualSpaceID) or "?",
+      })
+    end
+  end
+
+  for uuid, _ in pairs(actual) do
+    if expectedEndState[uuid] == nil then
+      table.insert(mismatches, { uuid = uuid, kind = "appeared" })
+    end
+  end
+
+  if #mismatches > 0 then
+    obj.logger.e("State-check failed (sync-group path):")
+    for _, m in ipairs(mismatches) do
+      if m.kind == "wrong-space" then
+        obj.logger.e("  " .. getDisplayLabel(m.uuid) ..
+          ": expected idx " .. tostring(m.expectedIdx) ..
+          ", got idx " .. tostring(m.actualIdx))
+      else
+        obj.logger.e("  " .. getDisplayLabel(m.uuid) .. ": " .. m.kind)
+      end
+    end
+    -- Restore invariant: next watcher fire diffs against truth.
+    state.lastActiveSpaces = actual
+  end
+
+  state.lastVerifierResult = {
+    timestamp  = os.time(),
+    mismatches = mismatches,
+  }
+
+  return #mismatches == 0
+end
+
+-- ============================================================================
+-- SYNC CHAIN (items 0, 0a, 1, 2, 5, 5b)
+-- ============================================================================
+
+local function runSyncChain(changedUUID, changedSpaceID, newIndex, targets, currentSpaces)
+  -- Resolve trigger index. If we can't determine it, we can't compute
+  -- expectedEndState for the targets — log and bail without LOCK.
+  local triggerIndex = getSpaceIndex(changedUUID, changedSpaceID)
+  if not triggerIndex then
+    obj.logger.w("SYNC: trigger space index not found; skipping chain")
+    state.lastActiveSpaces = currentSpaces
+    return
+  end
+
+  -- ----- LOCK + chainGeneration bump (items 0a) -----
+  state.syncInProgress = true
+  state.chainGeneration = state.chainGeneration + 1
+  local myGen = state.chainGeneration
+
+  -- ----- Bulk baseline write -----
+  -- Capture the post-trigger view of the world. Per-target observed-value
+  -- writes (item 2) overlay target keys after each poll. The trigger and
+  -- independents are captured here so the next non-sync-group watcher fire
+  -- diffs cleanly. (Without this, lastActiveSpaces[trigger] would stay at
+  -- the pre-swipe value and produce a phantom "trigger changed" diff on
+  -- the next event.)
+  state.lastActiveSpaces = currentSpaces
+
+  -- ----- COMPUTE_EXPECTED (item 0) -----
+  local expectedEndState = {}
+  for uuid, spaceID in pairs(currentSpaces) do
+    expectedEndState[uuid] = spaceID
+  end
+  for _, targetUUID in ipairs(targets) do
+    local targetSpaceID = getSpaceAtIndex(targetUUID, triggerIndex)
+    if targetSpaceID then
+      expectedEndState[targetUUID] = targetSpaceID
+    end
+    -- if nil: target has no Space at this index — leave entry alone.
+    -- step 0 in syncNext will see current == expected and skip.
+  end
+
+  if obj.logger.level >= 4 then -- debug
+    local parts = {}
+    for uuid, spaceID in pairs(expectedEndState) do
+      local idx = getSpaceIndex(uuid, spaceID) or "?"
+      table.insert(parts, getDisplayLabel(uuid) .. "=idx" .. tostring(idx))
+    end
+    obj.logger.d("EXPECTED: " .. table.concat(parts, ", "))
+  end
+
+  -- Targets summary log
+  local targetNames = {}
+  for _, targetUUID in ipairs(targets) do
+    table.insert(targetNames, getDisplayLabel(targetUUID))
+  end
+  obj.logger.i("SYNC: " .. getDisplayLabel(changedUUID) .. " (trigger) -> index " ..
+               tostring(newIndex) .. " | targets: " .. table.concat(targetNames, ", "))
+
+  startWatchdog(myGen)
+
+  -- chainEnd runs POPUP -> VERIFY -> CLEAR. Single tail per the P2
+  -- single-exit refactor — every non-bailed path lands here.
+  local function chainEnd()
+    if type(newIndex) == "number" then
+      showPopup(changedUUID, newIndex)
+    end
+
+    if obj.logger.level >= 4 then -- debug
+      local parts = {}
+      for uuid, spaceID in pairs(state.lastActiveSpaces) do
+        local idx = getSpaceIndex(uuid, spaceID) or "?"
+        table.insert(parts, getDisplayLabel(uuid) .. "=idx" .. tostring(idx))
+      end
+      obj.logger.d("DONE: " .. table.concat(parts, ", "))
+    end
+
+    -- VERIFY before CLEAR — keeps the gate closed during verifier read
+    -- so a new spaces-watcher fire can't interleave with verify state.
+    verifyEndState(expectedEndState)
+
+    -- CLEAR (item 5: no debounce padding)
+    cancelChainTimers()  -- drains watchdog
+    state.syncInProgress = false
+    obj.logger.d("Chain complete; watcher re-armed")
+  end
+
+  -- syncNext iterates one target at a time. Each per-target iteration is
+  -- step 0 (skip-or-dispatch) -> step 1 (dispatch) -> step 2 (poll) ->
+  -- step 3 (branch on outcome) -> step 4 (observed-value write) ->
+  -- step 5 (continue). On the success branch the same chainEnd is
+  -- reached as on the timeout branch.
+  local i = 0
+  local function syncNext()
+    -- Top-of-tick guard (items 0a, 6): bail if disabled or stale generation.
+    if not state.enabled or myGen ~= state.chainGeneration then
+      obj.logger.d("syncNext: bailing — disabled or stale generation")
+      return
+    end
+
+    i = i + 1
+    if i > #targets then
+      chainEnd()
+      return
+    end
+
+    local targetUUID = targets[i]
+    local label = getDisplayLabel(targetUUID)
+    local targetScreen = hs.screen.find(targetUUID)
+    if not targetScreen then
+      obj.logger.d("  " .. label .. ": SKIP (display not found)")
+      syncNext()
+      return
+    end
+
+    local expectedSpaceID = expectedEndState[targetUUID]
+    local current = hs.spaces.activeSpaceOnScreen(targetScreen)
+
+    -- Step 0: skip-or-dispatch decision
+    if current == expectedSpaceID then
+      -- Either target is already at trigger index (no-op sync) OR target
+      -- has no Space at trigger index (item 0 left expectedEndState[uuid]
+      -- at snapshot value, which equals current). The two cases are
+      -- distinguished by checking whether triggerIndex is in range.
+      local targetCount = getSpaceCount(targetUUID)
+      if triggerIndex > targetCount then
+        obj.logger.i("  " .. label .. " (" .. targetCount .. " spaces): " ..
+                     "SKIP (no space at index " .. triggerIndex .. ")")
+      else
+        obj.logger.d("  " .. label .. ": already at index " ..
+                     tostring(triggerIndex))
+      end
+      -- No dispatch, no observed-value write needed (baseline is already
+      -- correct from the bulk write at LOCK).
+      syncNext()
+      return
+    end
+
+    -- Step 1: dispatch
+    local currentIdx = getSpaceIndex(targetUUID, current) or "?"
+    obj.logger.i("  " .. label .. ": index " .. tostring(currentIdx) ..
+                 " -> " .. tostring(triggerIndex))
+    local ok, err = pcall(function()
+      hs.spaces.gotoSpace(expectedSpaceID)
+    end)
+    if not ok then
+      obj.logger.e("  " .. label .. ": ERROR — " .. tostring(err))
+      -- Fall through to poll — the poll will time out if gotoSpace really
+      -- failed, but if the API errored partially we still want to wait
+      -- and capture the observed value (whatever it ends up being).
+    else
+      obj.logger.d("  " .. label .. ": dispatched")
+    end
+
+    -- Step 2: poll. Tick every obj.pollInterval; each tick re-checks
+    -- guards (item 0a). Stop when activeSpaceOnScreen matches expected
+    -- OR pollTimeout elapses (then step 3 = timeout).
+    local pollDeadlineNs = hs.timer.absoluteTime() + (obj.pollTimeout * 1e9)
+
+    local function pollTick()
+      -- Guards on every tick.
+      if not state.enabled or myGen ~= state.chainGeneration then
+        obj.logger.d("pollTick: bailing — disabled or stale generation")
+        return
+      end
+
+      local active = hs.spaces.activeSpaceOnScreen(targetScreen)
+      if active == expectedSpaceID then
+        -- Step 3: success.
+        -- Step 4: observed-value write (item 2).
+        state.lastActiveSpaces[targetUUID] = active
+        obj.logger.d("  " .. label .. ": verified")
+        -- Step 5: continue. No inter-dispatch wait (F-010 Model B).
+        syncNext()
+        return
+      end
+
+      if hs.timer.absoluteTime() > pollDeadlineNs then
+        -- Step 3: timeout. macOS dropped the dispatch or settle was
+        -- unexpectedly slow. Log at WARN; continue chain (the verifier
+        -- will surface the resulting drift).
+        obj.logger.w("  " .. label .. ": gotoSpace did not land within " ..
+                     string.format("%.2f", obj.pollTimeout) .. "s pollTimeout")
+        -- Step 4: observed-value write (item 2). On timeout, observed
+        -- captures macOS's actual stuck state — the baseline reflects
+        -- reality, not optimism (per F-010 §6.2).
+        state.lastActiveSpaces[targetUUID] = active or current
+        -- Step 5: continue.
+        syncNext()
+        return
+      end
+
+      -- Tick again. Track the timer so :stop / BAIL_CHAIN / watchdog
+      -- can drain it.
+      local nextTimer = hs.timer.doAfter(obj.pollInterval, pollTick)
+      registerChainTimer(nextTimer)
+    end
+
+    pollTick()
+  end
+
+  syncNext()
 end
 
 -- ============================================================================
 -- WATCHER
 -- ============================================================================
 
+-- Helper: scan the currentSpaces vs lastActiveSpaces diff and return the
+-- first changed display (UUID, new SpaceID, new index). Returns nil if
+-- no display has changed since the last snapshot. Multi-changed-display
+-- handling is OOS for v3 (filed in OmniFocus); when more than one display
+-- changed in the same fire, only the first found becomes the trigger.
+local function findChange(currentSpaces, lastActiveSpaces)
+  local changedUUID, changedSpaceID, newIndex
+  for uuid, spaceID in pairs(currentSpaces) do
+    local lastSpaceID = lastActiveSpaces[uuid]
+    if lastSpaceID and lastSpaceID ~= spaceID then
+      local oi = getSpaceIndex(uuid, lastSpaceID) or "?"
+      local ni = getSpaceIndex(uuid, spaceID) or "?"
+      obj.logger.d("CHANGED: " .. getDisplayLabel(uuid) .. " index " ..
+                   tostring(oi) .. " -> " .. tostring(ni))
+      if not changedUUID then
+        changedUUID = uuid
+        changedSpaceID = spaceID
+        newIndex = ni
+      else
+        obj.logger.d("  (multiple changed; syncing first only)")
+      end
+    end
+  end
+  return changedUUID, changedSpaceID, newIndex
+end
+
+-- v3 single-exit refactor (item P2). Three early-exit paths plus one
+-- delegating path:
+--   * GUARDS — disabled or mid-chain → return
+--   * NO_CHANGE — diff finds nothing changed → refresh baseline, return
+--   * INDEPENDENT — trigger has no sync-group → popup + refresh, return
+--   * SYNC-GROUP — runSyncChain owns the rest (LOCK, COMPUTE_EXPECTED,
+--     poll-verify loop, POPUP, end-of-chain VERIFY, CLEAR)
+-- VERIFY_END_STATE only runs on the SYNC-GROUP path; the other paths
+-- don't dispatch anything so there is nothing to verify.
 local function setupWatcher()
   if state.spaceWatcher then
     state.spaceWatcher:stop()
@@ -1008,6 +1324,7 @@ local function setupWatcher()
   state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
   state.spaceWatcher = hs.spaces.watcher.new(function()
+    -- ----- Guard layer -----
     if not state.enabled then return end
     if state.syncInProgress then
       obj.logger.d("WATCHER: ignored (sync in progress)")
@@ -1016,7 +1333,7 @@ local function setupWatcher()
 
     local currentSpaces = hs.spaces.activeSpaces() or {}
 
-    if obj.logger.level >= 4 then -- debug level
+    if obj.logger.level >= 4 then -- debug
       local parts = {}
       for uuid, spaceID in pairs(currentSpaces) do
         local idx = getSpaceIndex(uuid, spaceID) or "?"
@@ -1025,35 +1342,22 @@ local function setupWatcher()
       obj.logger.d("WATCHER: " .. table.concat(parts, ", "))
     end
 
-    -- Find which display changed
-    local changedUUID, changedSpaceID, newIndex
-
-    for uuid, spaceID in pairs(currentSpaces) do
-      local lastSpaceID = state.lastActiveSpaces[uuid]
-      if lastSpaceID and lastSpaceID ~= spaceID then
-        local oi = getSpaceIndex(uuid, lastSpaceID) or "?"
-        local ni = getSpaceIndex(uuid, spaceID) or "?"
-        obj.logger.d("CHANGED: " .. getDisplayLabel(uuid) .. " index " .. tostring(oi) .. " -> " .. tostring(ni))
-
-        if not changedUUID then
-          changedUUID = uuid
-          changedSpaceID = spaceID
-          newIndex = ni
-        else
-          obj.logger.d("  (multiple changed; syncing first only)")
-        end
-      end
-    end
+    -- ----- Diff layer -----
+    local changedUUID, changedSpaceID, newIndex =
+      findChange(currentSpaces, state.lastActiveSpaces)
 
     if not changedUUID then
+      -- NO_CHANGE path: defensive snapshot refresh, exit.
       state.lastActiveSpaces = currentSpaces
       return
     end
 
-    -- Find targets for the triggering display
     local targets = getTargetsFor(changedUUID)
     if not targets or #targets == 0 then
-      obj.logger.d("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
+      -- INDEPENDENT path: not a sync trigger, just show the user a
+      -- name popup so they can see where they landed.
+      obj.logger.d("SKIP: " .. getDisplayLabel(changedUUID) ..
+                   " not in any sync group")
       if type(newIndex) == "number" then
         showPopup(changedUUID, newIndex)
       end
@@ -1061,58 +1365,8 @@ local function setupWatcher()
       return
     end
 
-    local targetNames = {}
-    for _, targetUUID in ipairs(targets) do
-      table.insert(targetNames, getDisplayLabel(targetUUID))
-    end
-    obj.logger.i("SYNC: " .. getDisplayLabel(changedUUID) .. " (trigger) -> index " .. tostring(newIndex) .. " | targets: " .. table.concat(targetNames, ", "))
-
-    state.syncInProgress = true
-    startWatchdog()
-
-    local function syncNext(i)
-      -- Item 6: bail if :stop() ran while this chain was queued.
-      -- (Stage 3 will also add a chainGeneration check here.)
-      if not state.enabled then
-        obj.logger.d("syncNext: bailing — disabled mid-chain")
-        return
-      end
-
-      if i > #targets then
-        -- (item 9a fix: removed redundant state.lastActiveSpaces write here —
-        -- the debounce-timer callback below overwrites it ~0.8 s later anyway.)
-
-        if type(newIndex) == "number" then
-          showPopup(changedUUID, newIndex)
-        end
-
-        if obj.logger.level >= 4 then -- debug level
-          local parts = {}
-          for uuid, spaceID in pairs(state.lastActiveSpaces) do
-            local idx = getSpaceIndex(uuid, spaceID) or "?"
-            table.insert(parts, getDisplayLabel(uuid) .. "=idx" .. tostring(idx))
-          end
-          obj.logger.d("DONE: " .. table.concat(parts, ", "))
-        end
-
-        if state.debounceTimer then state.debounceTimer:stop() end
-        state.debounceTimer = hs.timer.doAfter(obj.debounceSeconds, function()
-          state.syncInProgress = false
-          state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
-          cancelWatchdog()
-          obj.logger.d("Watcher re-enabled")
-        end)
-        return
-      end
-
-      syncTarget(changedUUID, changedSpaceID, targets[i])
-      state.pendingSyncTimer = hs.timer.doAfter(obj.switchDelay, function()
-        state.pendingSyncTimer = nil
-        syncNext(i + 1)
-      end)
-    end
-
-    syncNext(1)
+    -- ----- SYNC-GROUP path -----
+    runSyncChain(changedUUID, changedSpaceID, newIndex, targets, currentSpaces)
   end)
 
   state.spaceWatcher:start()
@@ -1252,19 +1506,32 @@ function obj:start()
       end
     end
   end
-  if type(obj.switchDelay) ~= "number" or obj.switchDelay < 0 then
-    obj.logger.e("switchDelay must be a non-negative number, got " .. tostring(obj.switchDelay))
+  -- v3 timing knobs (item 1)
+  if type(obj.pollTimeout) ~= "number" or obj.pollTimeout <= 0 then
+    obj.logger.e("pollTimeout must be a positive number, got " .. tostring(obj.pollTimeout))
     return self
   end
-  if obj.switchDelay < 0.1 then
-    obj.logger.w("switchDelay=" .. obj.switchDelay .. "s — macOS may drop rapid gotoSpace() calls (0.3s recommended)")
+  if obj.pollTimeout < 1.0 then
+    obj.logger.w("pollTimeout=" .. obj.pollTimeout ..
+                 "s — F-010 measured worst-case flip ~0.9s on a quiet system; " ..
+                 "values below 1s risk false timeouts under load (2.0s recommended)")
   end
-  if type(obj.debounceSeconds) ~= "number" or obj.debounceSeconds < 0 then
-    obj.logger.e("debounceSeconds must be a non-negative number, got " .. tostring(obj.debounceSeconds))
+  if type(obj.pollInterval) ~= "number" or obj.pollInterval <= 0 then
+    obj.logger.e("pollInterval must be a positive number, got " .. tostring(obj.pollInterval))
     return self
   end
-  if obj.debounceSeconds < 0.3 then
-    obj.logger.w("debounceSeconds=" .. obj.debounceSeconds .. "s — watcher may react to its own switches (0.8s recommended)")
+
+  -- Deprecated knobs (items 1, 2 in code-changes-pending). Parsed for
+  -- type-safety but ignored at runtime. Will be removed in a future release.
+  if obj.switchDelay ~= 0.3 then
+    obj.logger.w("switchDelay is deprecated in v3 (replaced by pollTimeout) and " ..
+                 "ignored at runtime; the value " .. tostring(obj.switchDelay) ..
+                 " has no effect.")
+  end
+  if obj.debounceSeconds ~= 0.8 then
+    obj.logger.w("debounceSeconds is deprecated in v3 (replaced by per-target " ..
+                 "observed-value writes) and ignored at runtime; the value " ..
+                 tostring(obj.debounceSeconds) .. " has no effect.")
   end
 
   checkEnvironment()
@@ -1323,6 +1590,14 @@ function obj:start()
 
   state.enabled = true
   state.syncInProgress = false
+  -- v3 chain state — re-init from scratch on every :start. Reload survival
+  -- is identical to v0.2: an in-flight chain at reload time is abandoned
+  -- (Lua state destroyed); macOS-side dispatched gotoSpace calls complete
+  -- on their own; new setupWatcher re-snapshots from the post-reload world.
+  state.chainGeneration = 0
+  state.chainTimers = {}
+  state.watchdogTimer = nil
+  state.lastVerifierResult = nil
   -- state.lastActiveSpaces is initialized inside setupWatcher() (item 8 fix:
   -- removing a redundant assignment here closes a race where a user swipe
   -- between the two writes was silently absorbed).
@@ -1349,36 +1624,30 @@ end
 --- Returns:
 ---  * The SpacesSync object
 function obj:stop()
-  -- Item 6: ordering matters. Stop chain-owned timers first and refresh the
-  -- baseline BEFORE setting state.enabled = false. Any spaces-watcher fire
-  -- arriving mid-restore is still suppressed by the existing enabled? guard,
-  -- so the baseline is restored to truth without a half-written intermediate
-  -- state leaking through. Stage 3 also bumps chainGeneration here.
-  --
-  -- 1. Stop chain-owned timers.
-  if state.pendingSyncTimer then
-    state.pendingSyncTimer:stop()
-    state.pendingSyncTimer = nil
-  end
-  if state.debounceTimer then
-    state.debounceTimer:stop()
-    state.debounceTimer = nil
-  end
-  cancelWatchdog()
+  -- Items 6 + 0a: ordering matters. Bump chainGeneration FIRST so any
+  -- closure already queued by hs.timer bails on its next tick. Then stop
+  -- chain timers and refresh the baseline BEFORE setting state.enabled =
+  -- false, so any spaces-watcher fire arriving mid-restore is still
+  -- suppressed by the existing enabled? guard.
 
-  -- 2. Refresh baseline so the next :start (or any in-flight watcher fire)
+  -- 1. Bump chainGeneration. Stale closures (poll ticks, watchdog) bail.
+  state.chainGeneration = state.chainGeneration + 1
+
+  -- 2. Stop chain-owned timers (single drain — chainTimers includes both
+  --    poll timers and the watchdog).
+  cancelChainTimers()
+
+  -- 3. Refresh baseline so the next :start (or any in-flight watcher fire)
   --    diffs against truth, not whatever stale view the chain left behind.
   state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
 
-  -- 3. Clear in-progress flag.
+  -- 4. Clear in-progress flag.
   state.syncInProgress = false
 
-  -- 4. Stop the spaces watcher (no more new fires after this).
+  -- 5. Stop the spaces watcher (no more new fires after this).
   stopWatcher()
 
-  -- 5. Disable LAST. Until this point, the in-flight syncNext closure (if
-  --    any) sees state.enabled == true and uses the same guards as a normal
-  --    fire; after this, the closure's top-of-tick check (item 6) bails.
+  -- 6. Disable LAST.
   state.enabled = false
 
   -- showStatusHUD() internally calls pickerDismiss() which is idempotent
