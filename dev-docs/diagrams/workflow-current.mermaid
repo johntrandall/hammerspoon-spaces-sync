@@ -1,0 +1,64 @@
+---
+title: SpacesSync — runtime sync workflow (CURRENT, as of v0.2)
+---
+flowchart TD
+    classDef user fill:#1e3a5f,stroke:#4a90e2,stroke-width:2px,color:#fff
+    classDef macos fill:#3a3a3a,stroke:#888,stroke-width:1.5px,color:#eee
+    classDef spoon fill:#1f4d2e,stroke:#4caf50,stroke-width:1.5px,color:#fff
+    classDef decision fill:#5a4a1e,stroke:#d4a853,stroke-width:1.5px,color:#fff
+    classDef terminal fill:#4a1f1f,stroke:#e57373,stroke-width:1.5px,color:#fff
+    classDef ui fill:#3d2a4d,stroke:#b07cc6,stroke-width:1.5px,color:#fff
+
+    U([User switches Space<br/>on trigger display]):::user
+    OS[macOS commits switch]:::macos
+    W[hs.spaces.watcher fires<br/>callback]:::macos
+
+    GATE1{state.enabled?}:::decision
+    GATE2{syncInProgress?}:::decision
+    DIFF[Diff activeSpaces<br/>vs lastActiveSpaces]:::spoon
+    FIND{Any UUID<br/>changed?}:::decision
+
+    LOOKUP[getTargetsFor<br/>changedUUID]:::spoon
+    GROUP{Trigger in<br/>a sync group?}:::decision
+
+    POPUP[showPopup<br/>on trigger display]:::ui
+    UPDATE1[lastActiveSpaces =<br/>currentSpaces]:::spoon
+
+    LOCK[syncInProgress = true]:::spoon
+    SYNCNEXT[/syncNext i = 1/]:::spoon
+    TARGET[syncTarget<br/>compute index, dispatch<br/>hs.spaces.gotoSpace]:::spoon
+    DELAY[wait switchDelay<br/>0.3s default]:::macos
+    MORE{More<br/>targets?}:::decision
+
+    DEBOUNCE[start debounceTimer<br/>0.8s default]:::spoon
+    REENABLE[syncInProgress = false<br/>refresh lastActiveSpaces<br/>watcher re-enabled]:::spoon
+
+    SKIP_OFF[/return — Spoon disabled/]:::terminal
+    SKIP_BUSY[/"return — drop event<br/><br/>⚠ NOT queued, NOT retried.<br/>Most events here are the<br/>Spoon's own gotoSpace echoes.<br/>A real user switch arriving<br/>during the ignore window is<br/>silently lost: lastActiveSpaces<br/>is re-snapshotted at the end,<br/>folding it into the baseline."/]:::terminal
+    DONE([Ready for next<br/>user switch]):::terminal
+
+    U --> OS --> W --> GATE1
+    GATE1 -- no --> SKIP_OFF
+    GATE1 -- yes --> GATE2
+    GATE2 -- yes --> SKIP_BUSY
+    GATE2 -- no --> DIFF --> FIND
+    FIND -- no --> UPDATE1 --> DONE
+    FIND -- yes --> LOOKUP --> GROUP
+
+    GROUP -- "no — independent" --> POPUP
+    GROUP -- "yes — in sync group" --> LOCK --> SYNCNEXT --> TARGET --> DELAY --> MORE
+    MORE -- yes --> SYNCNEXT
+    MORE -- no --> POPUP
+
+    POPUP -- "independent path" --> UPDATE1 --> DONE
+    POPUP -- "sync-group path" --> DEBOUNCE --> REENABLE --> DONE
+
+    %% Notes
+    subgraph LegendBox [Why the gates and delays]
+        direction LR
+        N1[switchDelay: macOS drops<br/>rapid back-to-back gotoSpace calls]
+        N2[syncInProgress + debounceSeconds:<br/>prevents the watcher reacting<br/>to its own gotoSpace]
+        N3[lastActiveSpaces snapshot:<br/>identifies which display<br/>the user actually switched]
+        N4["Ignore window =<br/>numTargets × switchDelay + debounceSeconds<br/>≈ 1.4s for a 3-display group with defaults"]
+    end
+    style LegendBox fill:#222,stroke:#666,color:#ccc

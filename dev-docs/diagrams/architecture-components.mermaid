@@ -1,0 +1,99 @@
+---
+title: SpacesSync — C4 Level 3 (Component) — inside SpacesSync.spoon
+---
+flowchart TB
+    classDef api fill:#1168bd,stroke:#0e5aa7,color:#fff,stroke-width:2px
+    classDef core fill:#1f4d2e,stroke:#4caf50,color:#fff,stroke-width:1.5px
+    classDef ui fill:#3d2a4d,stroke:#b07cc6,color:#fff,stroke-width:1.5px
+    classDef data fill:#5a4a1e,stroke:#d4a853,color:#fff,stroke-width:1.5px
+    classDef external fill:#666,stroke:#444,color:#fff,stroke-width:1.5px
+    classDef person fill:#08427b,stroke:#0a5394,color:#fff,stroke-width:2px
+
+    User([User]):::person
+
+    subgraph Spoon [SpacesSync.spoon &#40;Source/SpacesSync.spoon/init.lua&#41;]
+        direction TB
+
+        API[Public API<br/><br/>:init :start :stop :toggle<br/>:isEnabled :showNames<br/>:renameCurrentSpace<br/>:bindHotkeys]:::api
+
+        ENV[Environment Checks<br/><br/>checkEnvironment<br/>OS version gate,<br/>spans-displays, mru-spaces]:::core
+
+        POSMAP[Position Map<br/><br/>rebuildPositionMap<br/>positionToUUID,<br/>uuidToPosition,<br/>getDisplayLabel]:::core
+
+        GROUPS[Sync Group Lookup<br/><br/>getTargetsFor<br/>getGroupKey<br/>resolves trigger to targets]:::core
+
+        WATCHER[Watcher<br/><br/>setupWatcher / stopWatcher<br/>detects changed UUID,<br/>guards on enabled +<br/>syncInProgress]:::core
+
+        ENGINE[Sync Engine<br/><br/>syncTarget, syncNext<br/>chained gotoSpace with<br/>switchDelay, debounceTimer]:::core
+
+        SPHELP[Space Helpers<br/><br/>getSpaceIndex<br/>getSpaceAtIndex<br/>getSpaceCount]:::core
+
+        NAMES[Name Store<br/><br/>loadSpaceNames,<br/>saveSpaceNames,<br/>ensureNamesLoaded,<br/>nameForIndex<br/>group-keyed schema]:::data
+
+        POPUP[Popup / Status HUD<br/><br/>buildPopupCanvas,<br/>showPopup, hidePopup,<br/>showStatusHUD]:::ui
+
+        PICKER[Interactive Picker<br/><br/>startPicker, pickerNavigate,<br/>pickerExecuteSwitch,<br/>pickerDismiss<br/>arrow-key event tap]:::ui
+
+        STATE[(state &#43; popupState<br/><br/>enabled, syncInProgress,<br/>lastActiveSpaces,<br/>timers, canvas, eventtap)]:::data
+    end
+
+    subgraph HS [Hammerspoon APIs]
+        direction TB
+        HS_SPACES[hs.spaces<br/>watcher, gotoSpace,<br/>activeSpaces,<br/>spacesForScreen]:::external
+        HS_SCREEN[hs.screen<br/>allScreens, find, frame]:::external
+        HS_CANVAS[hs.canvas<br/>+ hs.styledtext]:::external
+        HS_EVENT[hs.eventtap<br/>keyDown intercept]:::external
+        HS_TIMER[hs.timer<br/>doAfter delays]:::external
+        HS_SET[hs.settings<br/>plist persistence]:::external
+        HS_DLG[hs.dialog<br/>textPrompt]:::external
+        HS_HOST[hs.host<br/>OS version probe]:::external
+    end
+
+    User -->|hs.loadSpoon,<br/>:start, hotkeys| API
+
+    API --> ENV
+    API --> POSMAP
+    API --> WATCHER
+    API --> NAMES
+    API --> POPUP
+    API --> PICKER
+
+    WATCHER -->|on change| GROUPS
+    WATCHER -->|read| STATE
+    WATCHER -->|write| STATE
+    WATCHER --> ENGINE
+    WATCHER --> POPUP
+
+    ENGINE --> SPHELP
+    ENGINE --> POSMAP
+    ENGINE -->|chained gotoSpace| HS_SPACES
+    ENGINE -->|switchDelay,<br/>debounceTimer| HS_TIMER
+    ENGINE -->|update<br/>lastActiveSpaces| STATE
+
+    GROUPS --> POSMAP
+
+    POSMAP --> HS_SCREEN
+
+    SPHELP --> HS_SCREEN
+    SPHELP --> HS_SPACES
+
+    NAMES --> GROUPS
+    NAMES <-->|read+write| HS_SET
+
+    POPUP --> HS_CANVAS
+    POPUP --> HS_TIMER
+    POPUP --> NAMES
+    POPUP --> SPHELP
+
+    PICKER --> POPUP
+    PICKER --> HS_EVENT
+    PICKER --> HS_SPACES
+    PICKER --> SPHELP
+
+    API -->|rename prompt| HS_DLG
+    ENV --> HS_HOST
+    WATCHER --> HS_SPACES
+
+    %% Component boundary helpers
+    style Spoon fill:#0d1f12,stroke:#4caf50,color:#fff
+    style HS fill:#222,stroke:#666,color:#ddd

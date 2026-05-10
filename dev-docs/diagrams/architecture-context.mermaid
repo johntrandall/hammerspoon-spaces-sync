@@ -1,0 +1,32 @@
+---
+title: SpacesSync — C4 Level 1 (System Context)
+---
+flowchart TB
+    classDef person fill:#08427b,stroke:#0a5394,color:#fff,stroke-width:2px
+    classDef system fill:#1168bd,stroke:#0e5aa7,color:#fff,stroke-width:2px
+    classDef external fill:#999,stroke:#666,color:#fff,stroke-width:1.5px
+    classDef config fill:#5a4a1e,stroke:#d4a853,color:#fff,stroke-width:1.5px
+
+    User([User<br/><br/>Mac user with multiple<br/>monitors and Spaces]):::person
+
+    subgraph Scope [SpacesSync — scope of this project]
+        Spoon[SpacesSync.spoon<br/><br/>Lua module loaded by Hammerspoon.<br/>Watches Space changes and<br/>mirrors them across a sync group.]:::system
+    end
+
+    Init[~/.hammerspoon/init.lua<br/><br/>User config: syncGroups, hotkeys.<br/>Calls hs.loadSpoon SpacesSync<br/>and :start.]:::config
+    HS[Hammerspoon<br/><br/>macOS automation runtime.<br/>Provides hs.spaces, hs.screen,<br/>hs.canvas, hs.timer, hs.settings.]:::external
+    OS[macOS Window Server<br/>+ Mission Control<br/><br/>Authoritative source of<br/>Spaces state. Driven via<br/>private CGSSpace APIs.]:::external
+    Plist[hs.settings store<br/><br/>org.hammerspoon.Hammerspoon.plist<br/>persists workspace names<br/>across restarts.]:::external
+
+    User -->|switches Space via<br/>Mission Control,<br/>Ctrl+Arrow,<br/>or hotkey| OS
+    User -->|edits config| Init
+    User -->|presses bound<br/>hotkeys ⌃⌥⌘Y/N/R| Spoon
+
+    Init -->|loads + configures| Spoon
+    Spoon -->|hosted by,<br/>uses Lua APIs of| HS
+    HS -->|observes + drives<br/>via private APIs| OS
+    Spoon -->|reads + writes<br/>workspace names| Plist
+    Spoon -->|shows popup,<br/>picker, status HUD<br/>via hs.canvas| User
+
+    %% Layout hint
+    User ~~~ Init
