@@ -1022,7 +1022,8 @@ local function setupWatcher()
 
     local function syncNext(i)
       if i > #targets then
-        state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+        -- (item 9a fix: removed redundant state.lastActiveSpaces write here —
+        -- the debounce-timer callback below overwrites it ~0.8 s later anyway.)
 
         if type(newIndex) == "number" then
           showPopup(changedUUID, newIndex)
@@ -1251,7 +1252,9 @@ function obj:start()
 
   state.enabled = true
   state.syncInProgress = false
-  state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+  -- state.lastActiveSpaces is initialized inside setupWatcher() (item 8 fix:
+  -- removing a redundant assignment here closes a race where a user swipe
+  -- between the two writes was silently absorbed).
   setupWatcher()
   -- Defer the status HUD to the next runloop tick. When :start() is called
   -- from init.lua (e.g. after hs.reload()), Hammerspoon has not yet finished
