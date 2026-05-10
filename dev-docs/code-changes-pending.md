@@ -1,6 +1,6 @@
 # Pending Code Changes — v3 Verify-Based Redesign
 
-Running list of code changes for the v3 redesign and the bug fixes that go alongside. **Nothing here is implemented yet.** When we decide to build, this is the inbox to work from.
+Catalog of code changes for the v3 redesign and the bug fixes that went alongside. **All items in this file landed in v0.3** (tag `v0.3`, commit `af5097e`); P3 (manual checklist) marked done 2026-05-10. The file is retained as the historical mapping of design items to landed code. Items 6-11 (post-v3 hardening / out-of-OmniFocus follow-ups) are tracked separately.
 
 Last updated: 2026-05-10 (after second council review). Reflects design decisions made after BOTH council reviews:
 - **Fire and verify** (per-target polling with timeout) replaces fixed `switchDelay`

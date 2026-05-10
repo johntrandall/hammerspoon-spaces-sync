@@ -202,7 +202,7 @@ function obj:status()
 end
 ```
 
-Also log a one-line human-readable summary at info level: `"SpacesSync v3: enabled, idle, 4 screens, 2 sync groups, last verify clean at HH:MM:SS"`.
+Also log a one-line human-readable summary at info level: `"SpacesSync v0.3: enabled, idle, 4 screens, 2 sync groups, last verify clean at HH:MM:SS"` (the version string is `obj.version`, currently `"0.3"`).
 
 Document in README under a new "Debugging" subsection.
 

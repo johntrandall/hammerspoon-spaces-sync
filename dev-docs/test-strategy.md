@@ -24,13 +24,16 @@ headlessly.
 project's first committed testing-strategy artifact. The test code
 itself (`tests/`) has not yet been authored against this policy (an
 exploratory prototype was created and trashed during policy iteration).
-Once the policy is approved, tests get written per the active-level
-plan below, and CLAUDE.md / README.md / `dev-docs/v3-implementation-handoff.md`
-get updated to point at the resulting `tests/run.sh`.
+CLAUDE.md, README.md, and `dev-docs/v3-implementation-handoff.md`
+already point at this strategy doc; once `tests/run.sh` exists, those
+pointers (and the "automated coverage is the empty set" note below)
+get tightened to specific commands.
 
 **Recommended implementation order:** L0 (cheapest, headless) → L3
 (public-API contract) → L6 Scenario 1 from `manual-test-checklist.md`
-(the proven happy path). Each is independently shippable.
+(the proven happy path). Each is independently shippable. This is the
+canonical statement of order — Active Levels table rows happen to be
+listed in this order as a convenience but are not load-bearing.
 
 Until then, automated coverage is the empty set; verification falls
 back to `dev-docs/manual-test-checklist.md` (30 scenarios).
@@ -68,7 +71,7 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 | Level | Status | Rationale | Runner |
 |-------|--------|-----------|--------|
 | **L0** — Guards | ✅ Active | Repo conventions: lua syntax (via [luacheck] or `luac -p`; SKIP if neither on PATH), `docs.json` shape, version sync between `obj.version` and the latest release tag, README link integrity. Headless. Runs on any host without Hammerspoon. | `tests/run.sh L0` |
-| **L1** — Unit | 🔄 Not yet | Most functions touch `hs.*`. Stateless pure-Lua helpers (`compareVersions`, `isLegacyFlatSchema`) are trivially testable via [busted]. Module-state-dependent helpers (`getGroupKey` reads `uuidToPosition` / `obj.syncGroups`) require state setup in the unit test. See J1 in Open Questions for the activation trigger. | `tests/run.sh L1` (none yet) |
+| **L1** — Unit | 🔄 Not yet | Most functions touch `hs.*`. Stateless pure-Lua helpers (`compareVersions`, `isLegacyFlatSchema`) are trivially testable via [busted]. Module-state-dependent helpers (`getGroupKey` and `getTargetsFor` read `uuidToPosition` / `obj.syncGroups`; `getDisplayLabel` reads `totalScreens`) need state setup in the unit test. Several other helpers (`nameForIndex` etc.) transitively depend on these. See J1 in Open Questions for the activation trigger. | `tests/run.sh L1` (none yet) |
 | **L2** — Integration | 🔄 Not yet | Scope is internal wiring within a component. The Spoon is a single file with no internal component boundaries that would benefit from intra-domain integration tests. | (n/a) |
 | **L3** — Contract | ✅ Active | Public API surface is small and stable: `:start`, `:stop`, `:status`, `:isEnabled`, `:toggle`, `:bindHotkeys`, `:showNames`, `:renameCurrentSpace`. Asserts methods exist with correct types and `:status()` returns the spec'd 12-key shape (see L3 Contract Spec below). Does NOT verify chaining (`return self`) — that would require calling stateful methods on the live Spoon. Test ASSUMES Spoon is already `:start()`-ed; SKIPs with an actionable message if not. Does NOT itself call `:start()` or `:stop()`. Runs inside Hammerspoon via `hs -c`; does NOT require multiple displays — single-display hosts get degenerate values (e.g. `positionMap = {[1] = uuid}`) but shape/type checks still pass. | `tests/run.sh L3` |
 | **L4** — Workflow | 🔄 Not yet | Multi-component user stories don't apply to a single-file Spoon. | (n/a) |
@@ -88,12 +91,12 @@ in `Source/SpacesSync.spoon/init.lua`):
 | `osBlocked` | boolean | env or Accessibility check failed |
 | `syncInProgress` | boolean | sync chain mid-flight |
 | `chainGeneration` | number | monotonically-increasing token (item 0a) |
-| `activeChainTimers` | number | count of chain-owned hs.timer handles |
+| `activeChainTimers` | number | count of chain-owned hs.timer handles (poll timers + watchdog) |
 | `totalScreens` | number | from `hs.screen.allScreens()` |
 | `positionMap` | table | shallow copy of position → UUID |
 | `syncGroups` | table | shallow copy of `obj.syncGroups` |
 | `lastActiveSpaces` | table | shallow copy of UUID → SpaceID baseline |
-| `lastVerifierResult` | table or nil | `{ timestamp, mismatches }`; nil if no chain has run |
+| `lastVerifierResult` | table or nil | `{ timestamp, mismatches }`; each `mismatches[i] = { uuid, kind, expectedIdx, actualIdx }` where `kind` is `"wrong-space"` / `"vanished"` / `"appeared"`; nil if no chain has run |
 | `pollTimeout` | number | current `obj.pollTimeout` |
 | `pollInterval` | number | current `obj.pollInterval` |
 
@@ -148,9 +151,9 @@ tests/
 ```
 
 Each L6 test file should cite the `dev-docs/manual-test-checklist.md`
-scenario it automates in its header comment. The 30-scenario checklist
-is the parent set; automated coverage grows by automating one scenario
-at a time.
+scenario it automates in its header comment. The checklist is the
+parent set; automated coverage grows by automating one scenario at a
+time.
 
 **L6 test design note.** Each L6 test's probe phase MUST read
 `positionMap` and `syncGroups` from `:status()` to discover a viable
@@ -176,7 +179,7 @@ This project does not have CI. Gating is currently advisory:
 
 - **Pre-commit** — `tests/run.sh L0`
 - **Pre-merge** — `tests/run.sh L3_inclusive`
-- **Pre-release** — `SPACESSYNC_L6=1 tests/run.sh L6_inclusive`
+- **Pre-release** — `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` (see Deviations §5 for the env-var gate)
 
 When CI is added (future), `L3_inclusive` is the recommended PR gate.
 `L6_inclusive` requires a multi-display test host and would need a
@@ -226,11 +229,13 @@ in Deviations §6 below.
    fire-and-forget; the test does NOT assert on its outcome and
    restore failure does NOT count as test failure.
 4. **Gating defaults adapted to the active set.** Canonical defaults
-   per `testing-policy/SKILL.md` are pre-commit L0+L1+L2 (includes L0),
-   pre-merge L3+L4 with L5 conditional on D2 strategy, pre-deploy L6.
-   SpacesSync has no active L1/L2/L4/L5, so the project's gating is
-   L0 → L3_inclusive → L6_inclusive. This is a substantive deviation,
-   not just a tooling difference.
+   per `ac-testing-policy/SKILL.md` are pre-commit L0+L1+L2 (the
+   quick-reference subset in `testing-policy/SKILL.md` shows the same
+   gating table omitting L0; the SKILL.md is the authoritative one for
+   level inclusion). Pre-merge is L3+L4 with L5 conditional on D2
+   strategy; pre-deploy is L6. SpacesSync has no active L1/L2/L4/L5,
+   so the project's gating is L0 → L3_inclusive → L6_inclusive. This
+   is a substantive deviation, not just a tooling difference.
 5. **L6 runs against the live Hammerspoon, not a sandbox.** Canonical
    policy requires L6 to run in an isolated instance ("minimum
    isolation: dedicated instance of the external system"). macOS does
@@ -246,10 +251,13 @@ in Deviations §6 below.
    crashes mid-test.
 6. **Test lifecycle categories applied beyond L5–L6.** Canonical
    policy scopes `permanent`/`ephemeral`/`interval` to L5–L6 tests
-   assigned by a human. SpacesSync applies the same vocabulary to
-   L0/L3 tests (all currently "permanent"). Harmless extension; flags
-   the convention so a future reader doesn't mistake it for canonical
-   alignment.
+   assigned by a human (per `ac-testing-policy/SKILL.md` line 454
+   "Test Lifecycle Categories (L5–L6, assigned by human)" and
+   MANIFESTO.md line 678 "L5 and L6 tests have three lifecycle
+   categories"; the vocabulary file defines the terms but does not
+   scope them). SpacesSync applies the same vocabulary to L0/L3 tests
+   (all currently "permanent"). Harmless extension; flagged so a
+   future reader doesn't mistake it for canonical alignment.
 
 ## Operational Notes
 
@@ -266,16 +274,29 @@ tests are therefore split into shell-orchestrated phases:
 3. **assert** — read `:status()` once (capture `lastVerifierResult`
    BEFORE restore), validate, restore Spaces
 
-`tests/L6/run.sh` shell-sleeps between arm and assert so the runloop
-pumps the watcher, the chain, and the verifier in the meantime.
+`tests/L6/run.sh` owns the probe/arm/sleep/assert orchestration for L6
+tests: it shell-sleeps between arm and assert so the runloop pumps the
+watcher, the chain, and the verifier in the meantime. The top-level
+`tests/run.sh` dispatcher only handles `SPACESSYNC_L6=1` gating and
+delegation; it does NOT manage L6 timing or phases itself.
 
-**`SLEEP_BETWEEN` sizing** mirrors the watchdog bound from `init.lua`
-(`startWatchdog` body): `numTargets × pollTimeout + safety_margin`.
-With default `pollTimeout = 2.0` and a 2-display group (1 target),
-~4 s is comfortable. For 3-target groups (4-display sync group), use
-~8 s. The runner should compute this from `:status().syncGroups`
-rather than hard-code, OR document the default as "safe for 2-display
-groups only; raise for larger groups."
+**`SLEEP_BETWEEN` sizing** mirrors the watchdog bound from `init.lua`'s
+`startWatchdog`:
+
+```
+SLEEP_BETWEEN ≥ max(8, 3 × pollTimeout + 2)   (seconds)
+```
+
+The `3` is hard-coded in the watchdog and does NOT scale by actual
+target count — the bound is sized for the worst-case 4-display sync
+group (3 targets). At default `pollTimeout = 2.0`, the bound is 8 s.
+For users who lower `pollTimeout` (e.g., to 1.0), the bound is still
+8 s. For users who raise `pollTimeout` (e.g., to 4.0), the bound
+becomes 14 s; SLEEP_BETWEEN must follow.
+
+The runner may either hard-code the formula or read `pollTimeout` from
+`:status()` and compute. A literal-default 4-second sleep is too tight
+under any pollTimeout (would race the watchdog); use 8 s as the floor.
 
 This `hs -c` runloop quirk also applies outside testing — anyone using
 the CLI to drive Hammerspoon should understand it. Mirrored in
@@ -311,8 +332,8 @@ If L6 fails with `"chain still in progress at assert time"`:
    `true`, you hit the `hs.ipc` recursion bug above. Reset via
    `:stop(); :start()` and re-run.
 2. Otherwise, the chain genuinely didn't settle in time. Raise
-   `SLEEP_BETWEEN` per the `numTargets × pollTimeout + safety_margin`
-   formula above.
+   `SLEEP_BETWEEN` per the `max(8, 3 × pollTimeout + 2)` formula
+   above.
 
 If a test crashes between arm and assert (leaving Spaces in a
 mid-transition state):

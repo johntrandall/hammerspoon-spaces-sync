@@ -5,9 +5,20 @@
 **Purpose:** verify v3 behavior against expected outcomes. Required prerequisite for landing v3 (item P3 in `code-changes-pending.md`).
 
 **How to use:**
-1. **Run against current `init.lua` (v0.2) FIRST** to establish baseline behavior. Some scenarios will fail under v0.2 — that's expected (they're the bugs v3 fixes). Record actual v0.2 outcomes in the "v0.2 actual" column.
-2. After each v3 implementation stage lands, re-run the relevant scenarios. The "v3 expected" column is the contract.
-3. A scenario is **passing** when actual matches expected.
+
+*Historical context (no longer the active workflow):* during the v3
+implementation push, step 1 was "Run against v0.2 first to establish
+baseline behavior" and step 2 was "After each v3 stage lands, re-run."
+Both columns are now filled in; the v0.2/v3 actuals are a record, not
+an instruction.
+
+*Active workflow now (v0.3+):* this checklist is a regression reference
+for the shipped Spoon. Run the relevant scenarios after edits to the
+sync chain (`runSyncChain`, `verifyEndState`, polling logic), or
+before a release. A scenario is **passing** when actual matches the
+"v3 expected" column. The automated complement at
+`dev-docs/test-strategy.md` plans to convert one scenario at a time
+into `tests/L6/*.lua`.
 
 **Test environment:** SusanBones (or any 4-display Mac with multiple Spaces per display). At minimum 2 displays with 2+ Spaces each are needed.
 
