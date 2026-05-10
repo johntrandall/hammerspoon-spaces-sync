@@ -36,6 +36,19 @@ If you call `gotoSpace()` for multiple monitors in a tight loop, macOS will sile
 > it with poll-based verification (see `dev-docs/findings/F-010-polling-model-a-vs-b.md`
 > and `dev-docs/test-strategy.md` § Operational Notes).
 
+> **L6 testing footnote (2026-05-10) *(Verified — observed in scenario-05 prototype, session a42bdc08)*:**
+> A *second* `gotoSpace(sid)` fired while SpacesSync's own chain is
+> mid-flight (i.e. the watcher → chain → poll loop is dispatching
+> gotoSpaces to target displays) gets silently dropped, even with a
+> 1-second gap. The trigger Space does not move. This is consistent
+> with the general drop behavior above but worth noting separately:
+> simulating "user re-swipes mid-chain" (manual-checklist Group B #5)
+> via the AX path is therefore NOT reliably automatable — a real
+> trackpad swipe goes through a different input path that Mission
+> Control prioritizes. Diagnostic: `activeSpaceOnScreen` returns the
+> first-swipe sid both immediately after the dropped `gotoSpace` and
+> 8 s later. Conclusion: scenario #5 stays manual-checklist-only.
+
 ```lua
 -- BAD: second call gets dropped
 hs.spaces.gotoSpace(spaceOnMonitor2)
