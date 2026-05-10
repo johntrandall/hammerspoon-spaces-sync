@@ -1,5 +1,5 @@
 ---
-title: SpacesSync data model (revised after vocab council)
+title: SpacesSync data model (revised — stable letter IDs)
 ---
 flowchart LR
     classDef ui fill:#08427b,stroke:#0a5394,color:#fff,stroke-width:2px
@@ -9,15 +9,15 @@ flowchart LR
     classDef conv fill:#2e7d32,stroke:#4caf50,color:#fff
 
     subgraph S1 [GUI shape — one row per display]
-        UI["position 1 → Group 1<br/>position 2 → Group 1<br/>position 3 → — None<br/>position 4 → Group 2<br/><br/>'Group N' is a derived display label<br/>computed from display order.<br/>Identity is the opaque ID — see S2."]:::ui
+        UI["position 1 → Group A<br/>position 2 → Group A<br/>position 3 → — None<br/>position 4 → Group B<br/><br/>Group letter is the stable identity<br/>and the v1 display label.<br/>Letters never recycle or reshuffle."]:::ui
     end
 
     subgraph S2 [Persistent shape — SpacesSync.json]
-        JSON["{<br/>  &quot;schemaVersion&quot;: 1,<br/>  &quot;enabled&quot;: true,         ＊master＊<br/>  &quot;syncMode&quot;: &quot;automatic&quot;,  ＊auto or manual＊<br/>  &quot;groupOf&quot;: {<br/>    &quot;1&quot;: &quot;grp_a8x2k0&quot;,<br/>    &quot;2&quot;: &quot;grp_a8x2k0&quot;,<br/>    &quot;4&quot;: &quot;grp_n4f7m1&quot;<br/>  },<br/>  &quot;spaceNames&quot;: {        ＊keyed by group ID＊<br/>    &quot;grp_a8x2k0&quot;: { &quot;1&quot;: &quot;Code&quot;, &quot;2&quot;: &quot;Email&quot; },<br/>    &quot;grp_n4f7m1&quot;: { &quot;1&quot;: &quot;Reference&quot; }<br/>  },<br/>  &quot;_lastSeen&quot;: {        ＊for stale entries＊<br/>    &quot;5&quot;: { name, uuid, date }<br/>  },<br/>  &quot;switchDelay&quot;: 0.3,<br/>  &quot;debounceSeconds&quot;: 0.8,<br/>  &quot;popupDuration&quot;: 2,<br/>  &quot;statusDuration&quot;: 3,<br/>  &quot;hotkeys&quot;: {<br/>    &quot;toggle&quot;:      { mods:[ctrl,alt,cmd], key:&quot;Y&quot; },<br/>    &quot;showNames&quot;:   { mods:[ctrl,alt,cmd], key:&quot;N&quot; },<br/>    &quot;renameSpace&quot;: { mods:[ctrl,alt,cmd], key:&quot;R&quot; },<br/>    &quot;syncNow&quot;:     { mods:[ctrl,alt,cmd], key:&quot;S&quot; },<br/>    &quot;openSettings&quot;:{ mods:[ctrl,alt,cmd], key:&quot;,&quot; }<br/>  }<br/>}"]:::stored
+        JSON["{<br/>  &quot;schemaVersion&quot;: 1,<br/>  &quot;enabled&quot;: true,         ＊master＊<br/>  &quot;syncMode&quot;: &quot;automatic&quot;,  ＊auto or manual＊<br/>  &quot;groupOf&quot;: {<br/>    &quot;1&quot;: &quot;A&quot;,<br/>    &quot;2&quot;: &quot;A&quot;,<br/>    &quot;4&quot;: &quot;B&quot;<br/>  },<br/>  &quot;spaceNames&quot;: {        ＊keyed by group letter＊<br/>    &quot;A&quot;: { &quot;1&quot;: &quot;Code&quot;, &quot;2&quot;: &quot;Email&quot; },<br/>    &quot;B&quot;: { &quot;1&quot;: &quot;Reference&quot; }<br/>  },<br/>  &quot;_lastSeen&quot;: {        ＊for stale entries＊<br/>    &quot;5&quot;: { name, uuid, date }<br/>  },<br/>  &quot;switchDelay&quot;: 0.3,<br/>  &quot;debounceSeconds&quot;: 0.8,<br/>  &quot;popupDuration&quot;: 2,<br/>  &quot;statusDuration&quot;: 3,<br/>  &quot;hotkeys&quot;: {<br/>    &quot;toggle&quot;:      { mods:[ctrl,alt,cmd], key:&quot;Y&quot; },<br/>    &quot;showNames&quot;:   { mods:[ctrl,alt,cmd], key:&quot;N&quot; },<br/>    &quot;renameSpace&quot;: { mods:[ctrl,alt,cmd], key:&quot;R&quot; },<br/>    &quot;syncNow&quot;:     { mods:[ctrl,alt,cmd], key:&quot;S&quot; },<br/>    &quot;openSettings&quot;:{ mods:[ctrl,alt,cmd], key:&quot;,&quot; }<br/>  }<br/><br/>  // v2 forward-compat:<br/>  // &quot;groupLabels&quot;: { &quot;A&quot;: &quot;Code&quot;, &quot;B&quot;: &quot;Reference&quot; }<br/>}"]:::stored
     end
 
     subgraph S3 [Engine shape — obj.syncGroups]
-        ENG["{<br/>  {1, 2},<br/>  {4}<br/>}<br/><br/>Derived from groupOf at runtime.<br/>Stable IDs collapse to ordered<br/>position lists for the sync engine."]:::runtime
+        ENG["{<br/>  {1, 2},<br/>  {4}<br/>}<br/><br/>Derived from groupOf at runtime.<br/>Letters collapse to ordered<br/>position lists for the sync engine."]:::runtime
     end
 
     UI -->|same membership<br/>no conversion| JSON
@@ -28,11 +28,11 @@ flowchart LR
 
     JSON -.- Conv1
 
-    Note1["Single-group constraint is structural.<br/>groupOf is a map keyed by position.<br/>A position has ONE group ID.<br/>Cannot represent overlap by construction."]
+    Note1["Single-group constraint is structural.<br/>groupOf is a map keyed by position.<br/>A position has ONE group letter.<br/>Cannot represent overlap by construction."]
     UI -.- Note1
 
-    Note2["Why opaque group IDs?<br/>Letters and numbers reshuffle on changes.<br/>When groups gain metadata in v2<br/>(custom name, color, per-group switchDelay),<br/>label-keyed metadata would follow the wrong<br/>group. Opaque IDs survive every reshuffle.<br/>Group N labels are render-time only."]
+    Note2["Why letters as stable IDs?<br/><br/>Earlier draft used opaque grp_xxxxxx.<br/>Letters are simpler, debuggable, and<br/>just as stable provided we don't<br/>reshuffle them.<br/><br/>Stability rules:<br/>1. Letters assigned at group creation<br/>2. Never reshuffled (Group A stays A)<br/>3. Never recycled in v1 (deleted A is gone)<br/>4. Cap at 26; AA/AB if exhausted (unlikely)"]
     JSON -.- Note2
 
-    Note3["Why is spaceNames in the SAME JSON<br/>keyed by group ID, not split into hs.settings?<br/><br/>Earlier draft kept names in hs.settings keyed<br/>by sorted-position-tuple ('1,2,3'). Reshuffling<br/>groupOf silently stranded names under stale<br/>keys. Group-ID-keyed names in JSON solve this<br/>structurally - reshuffles don't change group IDs,<br/>so names follow membership automatically.<br/><br/>The 'workspace' noun was rejected: names are<br/>just Space names that happen to apply per-group.<br/>No new term needed; the cross-display behavior<br/>is a property of being in a sync group."]
+    Note3["Why is spaceNames keyed by letter,<br/>not by display or position?<br/><br/>Earlier draft kept names in hs.settings<br/>keyed by sorted-position-tuple ('1,2,3').<br/>Reshuffling groupOf silently stranded<br/>names under stale keys.<br/><br/>Letter-keyed names follow the group<br/>identity automatically. Reshuffles<br/>change positions IN a group, not the<br/>group letter, so names stay attached.<br/><br/>v2: groupLabels for user-set display<br/>names alongside the letter."]
     JSON -.- Note3

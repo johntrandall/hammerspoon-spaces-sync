@@ -702,7 +702,7 @@
           <div class="pos">position 1</div>
           <div class="display-name">LG SDQHD #1</div>
           <div class="group-select">
-            <span class="chip a"></span><span>Group 1</span>
+            <span class="chip a"></span><span>Group A</span>
             <span class="caret">▾</span>
           </div>
         </div>
@@ -710,7 +710,7 @@
           <div class="pos">position 2</div>
           <div class="display-name">LG SDQHD #2</div>
           <div class="group-select">
-            <span class="chip a"></span><span>Group 1</span>
+            <span class="chip a"></span><span>Group A</span>
             <span class="caret">▾</span>
           </div>
         </div>
@@ -734,12 +734,12 @@
             <div class="menu-item">
               <span class="checkmark"></span>
               <span class="chip a"></span>
-              <span>Group 1 <span class="members">— positions 1, 2</span></span>
+              <span>Group A <span class="members">— positions 1, 2</span></span>
             </div>
             <div class="menu-item">
               <span class="checkmark"></span>
               <span class="chip b"></span>
-              <span>Group 2 <span class="members">— position 4</span></span>
+              <span>Group B <span class="members">— position 4</span></span>
             </div>
             <div class="menu-divider"></div>
             <div class="menu-item create">
@@ -753,7 +753,7 @@
           <div class="pos">position 4</div>
           <div class="display-name">LG SDQHD #4</div>
           <div class="group-select">
-            <span class="chip b"></span><span>Group 2</span>
+            <span class="chip b"></span><span>Group B</span>
             <span class="caret">▾</span>
           </div>
         </div>
@@ -968,6 +968,14 @@
     and what each is assigned to. Groups come into existence when a
     display picks <em>+ New group</em> and dissolve when the last member
     leaves. No "create empty group" affordance, no orphans.
+
+    <h4>Group letters are stable IDs</h4>
+    A group's letter (A, B, C …) is assigned at creation and never
+    reshuffles or recycles. Delete Group A → "A" is retired forever;
+    next new group is the next unused letter. The letter doubles as
+    the v1 display label ("Group A"). v2 may add a separate
+    user-set display label (e.g. "Code"), but the letter remains the
+    stable identifier internally.
 
     <h4>The single-group constraint</h4>
     Each row's selector picks <em>one</em> group or <em>None</em>. The data
