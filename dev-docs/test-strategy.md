@@ -29,6 +29,7 @@ under the layout described below. Current coverage:
 | L1    | green  | 45 unit tests across 6 helpers |
 | L3    | green  | 1 contract test (12-key `:status()` shape) |
 | L6    | green  | scenario-01-single-swipe + scenario-08-mid-chain-stop (2 of 30 manual checklist scenarios automated) |
+| L6h   | green  | scenario-05-mid-chain-reswipe (1 of 30; human-in-loop sub-tier for scenarios needing real input devices — see L6 Sub-Tiers) |
 
 Run `tests/run.sh` for the default safe set (L0 + L3),
 `tests/run.sh L3_inclusive` for the pre-commit equivalent (L0 + L1 +
@@ -87,6 +88,7 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 | **L4** — Workflow | 🔄 Not yet | Multi-component user stories don't apply to a single-file Spoon. | (n/a) |
 | **L5** — E2E mocked | 🔄 Not yet | Mocking `hs.spaces.*` from inside Hammerspoon is possible but high-cost; the conceptual gap to L6 is small (just the actual `gotoSpace`). | (n/a) |
 | **L6** — E2E live | ✅ Active | The actual sync engine: dispatch → poll → verify → CLEAR. Runs inside Hammerspoon on a multi-display host. Drives a known `gotoSpace`, asserts on `state.lastVerifierResult.mismatches == {}` via `:status()`. **Will briefly switch Spaces on the test host's displays** (duration: see Operational Notes § SLEEP_BETWEEN sizing). See L6 Sub-Tiers section below for sub-tier breakdown. | `tests/run.sh L6` |
+| **L6h** — Human-in-loop | ✅ Active | Sub-tier of L6 for scenarios where the trigger cannot be emulated via `hs.spaces.gotoSpace` because Mission Control silently drops a second `gotoSpace` while SpacesSync's chain is in flight (see `dev-docs/hammerspoon-and-spaces-quirks.md` § Rapid `gotoSpace()` drops, L6 testing footnote). The runner prints structured instructions, waits for the user to perform a real trackpad swipe (or other real input), then asserts on `:status().lastVerifierResult`. Replaces the prose-only "v3 actual" column in the manual checklist for those scenarios with programmatic assertions. **INTERACTIVE** — requires a human at the terminal. | `tests/run.sh L6h` |
 | **L7** — Browser | ❌ N/A | No web UI. |
 | **L8** — GUI | 🔄 Not yet | Could verify popup canvas appearance via screenshot diffing. Overkill for a 4-row `hs.canvas` popup. |
 
@@ -121,8 +123,39 @@ systems (Spark 049). For SpacesSync as a single-machine project:
 | **L6a — Smoke** | Folded into the runner's preflight. The check `spoon.SpacesSync ~= nil and spoon.SpacesSync.start ~= nil` proves only that `hs.loadSpoon` ran; it does NOT prove `:start()` succeeded. The L3 contract test (which asserts `state.enabled = true` and the populated position map) is the stronger gate for "Spoon initialized correctly." If Hammerspoon is unresponsive the `hs -c` invocation fails outright. |
 | **L6b — Assembly** | Trivially satisfied. The Spoon is one file symlinked into `~/.hammerspoon/Spoons/SpacesSync.spoon/` via `install.sh`. If preflight + L3 pass, assembly passed. |
 | **L6c — Journey** | Non-trivial. The active sync chain — what the user actually triggers — is what L6 tests. |
+| **L6h — Human-in-loop** | SpacesSync-specific extension (not part of the canonical Spark 049 sub-tier set). Tests whose trigger requires a real input device (trackpad swipe, hotkey on a specific display, accessibility revoke in System Settings) that `hs.spaces.gotoSpace` and `hs -c` cannot emulate. Same probe/arm/assert harness as L6, with two added user-prompt phases between arm and assert. See `tests/L6h/run.sh` and the "L6h scenarios" sub-section below. |
 
-For SpacesSync, "L6" in this doc means L6c.
+For SpacesSync, "L6" in this doc means L6c (and "L6h" means the human-in-loop tier).
+
+### L6h scenarios
+
+L6h fills the gap left by manual-checklist scenarios that can't be
+driven from `hs -c` because of the
+[gotoSpace-mid-chain-drop quirk](hammerspoon-and-spaces-quirks.md).
+The L6h runner prints structured instructions, fires an automated
+"first" action (often a `gotoSpace`), prompts the user to perform the
+manual "second" action (e.g. a trackpad swipe), then asserts on
+`:status().lastVerifierResult` after a chain settle. Each scenario
+costs ~30 seconds of human attention and gives full programmatic
+assertions on the outcome.
+
+Scenarios currently in `tests/L6h/`:
+* `scenario-05-mid-chain-reswipe.lua` — user re-swipes the trigger
+  display while SpacesSync's chain is in flight. Verifier should flag
+  the trigger as `wrong-space` with `expectedIdx = first_dest`,
+  `actualIdx = second_dest` (the user's destination).
+
+Candidate scenarios for future L6h port (from manual-checklist):
+* Group B #6 — user swipes a target display mid-chain.
+* Group B #7 — user swipes an independent (non-sync-group) display mid-chain.
+* Group E #22 — accessibility revoked at `:start` (user toggles
+  System Settings → Privacy & Security → Accessibility).
+
+L6h gating: requires BOTH `SPACESSYNC_L6=1` (because the test
+dispatches `gotoSpace` in its arm phase) AND `SPACESSYNC_L6H=1`
+(explicit acknowledgement that the run is interactive). The gates
+are enforced at a single point in `tests/run.sh` — Deviations §5
+applies to both.
 
 ## Cumulative `_inclusive` Runners
 
@@ -139,6 +172,7 @@ For SpacesSync's four active levels:
 | `tests/run.sh L1_inclusive` | L0 + L1 | Headless; no Hammerspoon needed |
 | `tests/run.sh L3_inclusive` | L0 + L1 + L3 | Pre-commit equivalent; Hammerspoon must be running |
 | `tests/run.sh L6_inclusive` | L0 + L1 + L3 + L6 | Pre-release equivalent; switches Spaces (see Active Levels L6 row); requires `SPACESSYNC_L6=1` (see Deviations §5) |
+| `tests/run.sh L6h_inclusive` | L0 + L1 + L3 + L6 + L6h | Full interactive validation; requires `SPACESSYNC_L6=1` AND `SPACESSYNC_L6H=1`; ~30 s/scenario of human attention |
 | `tests/run.sh` (no arg) | L0 + L3 | Default. "Safe" = no Spaces disruption (still requires HS) |
 
 Bare-level invocations (`tests/run.sh L3`, `tests/run.sh L6`) exist for
