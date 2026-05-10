@@ -14,6 +14,7 @@ Some concepts have both a user-facing and internal name (e.g. "Workspace" vs `wo
 | Display          | display, `screen` | — |
 | Position number  | position, `pos` | — |
 | Cursor display   | `cursorScreen` (`hs.mouse.getCurrentScreen()`) | — |
+| Current Space    | current Space, `activeSpaceOnScreen()` | — |
 | Sync group       | sync group, `syncGroups`, `groupOf` | — |
 | Display set      | (not modeled in code) | — |
 | Space            | space, `spaceID` | — |
@@ -48,6 +49,11 @@ The display under the mouse cursor at the moment a hotkey or settings-pane butto
 This is the user-facing equivalent of the engine-internal "trigger display": when the engine detects a Space switch, the watcher's "trigger" is internal — the user never needs to know which display the engine considers authoritative. When the user invokes an action, "cursor display" is the term.
 
 **Implementation:** `hs.mouse.getCurrentScreen()` with `hs.screen.mainScreen()` as fallback.
+
+### Current Space
+The Space currently visible on a given display — the one the user sees when they look at it. The same as `hs.spaces.activeSpaceOnScreen(display)`. Used in user-facing copy when we need to disambiguate from "all Spaces on the display."
+
+**Use "current," never "active."** "Active" introduces a parallel axis that overlaps with "cursor display" and creates two ways to say one thing. The pair *cursor display* × *current Space* covers every reference: which display, which Space on it.
 
 ### Sync group
 A group of displays that share Space indices. When any display in a sync group switches Spaces (in Automatic sync mode), SpacesSync moves the others to match. This is the core abstraction the Spoon provides.
@@ -155,6 +161,7 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 | Don't say | Say instead | Why |
 |---|---|---|
 | Monitor | Display | Consistency with macOS and the rest of the codebase. |
+| Active display / active Space | Cursor display / current Space | Two ways to say one thing. The cursor display × current Space pair covers every user-action reference; "active" introduces a third overlapping concept and breeds drift. |
 | Space name | Workspace name | Workspace is the cross-display concept; "Space" implies one display only. |
 | Trigger / target (in user copy) | Cursor display, or "the group" / "the rest of the group" | Internal only. |
 | Sibling (in user copy) | The rest of the group | Internal only. |
@@ -163,6 +170,8 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 | Source / partner | Trigger / target (in code) or cursor display (in user copy) | Old v0.1 vocabulary. |
 | Space ID (in cross-display comparisons) | Space index | IDs aren't comparable across displays. |
 | `pos N` (abbreviation) | `position N` | Don't abbreviate user-facing labels. |
+| "Across each group" (when describing mirroring) | "to the rest of its sync group" | "Across each" reads as sweeping multiple groups. Mirroring is per-group: one Space switch propagates within one group. |
+| "Align" / "re-align" | "Switch" | Users switch Spaces; that's the verb. "Align" implies coordinate-matching. |
 
 ---
 
