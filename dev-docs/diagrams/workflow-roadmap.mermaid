@@ -1,10 +1,11 @@
 ---
-title: SpacesSync — runtime sync workflow (ROADMAP — same shape as current; documents design intent)
+title: SpacesSync — runtime sync workflow (ROADMAP v3 — verify-based, no arbitrary waits)
 ---
 flowchart TD
     classDef user fill:#1e3a5f,stroke:#4a90e2,stroke-width:2px,color:#fff
     classDef macos fill:#3a3a3a,stroke:#888,stroke-width:1.5px,color:#eee
     classDef spoon fill:#1f4d2e,stroke:#4caf50,stroke-width:1.5px,color:#fff
+    classDef new fill:#1f3a4d,stroke:#4ab3c6,stroke-width:2px,color:#fff
     classDef decision fill:#5a4a1e,stroke:#d4a853,stroke-width:1.5px,color:#fff
     classDef terminal fill:#4a1f1f,stroke:#e57373,stroke-width:1.5px,color:#fff
     classDef ui fill:#3d2a4d,stroke:#b07cc6,stroke-width:1.5px,color:#fff
@@ -12,82 +13,129 @@ flowchart TD
     %% ============================================================
     %% READING NOTE
     %% ============================================================
+    %% v3 differs from CURRENT in three structural ways:
+    %% 1. Two entry paths instead of one — the spaces-watcher path
+    %%    (user swipes) and a new screen-watcher path (display reconfig).
+    %% 2. The sync chain uses fire-and-verify instead of fire-and-wait.
+    %%    The fixed switchDelay and debounceSeconds are gone.
+    %% 3. Eager lastActiveSpaces writes per target before each dispatch.
+    %%    This is how echoes get absorbed without a debounce window.
     %% Each node opens with a <b>bold lead</b> for quick-skim.
     %% Detail follows for the deeper reader.
-    %% This roadmap is intentionally near-identical to CURRENT —
-    %% the design goal is met by today's code; this diagram
-    %% documents what we deliberately do NOT do.
     %% ============================================================
 
     %% ============================================================
     %% KEY CONCEPTS — read this first
     %% ============================================================
-    KEY["<div style='text-align: left;'><b>Key concepts — read this first</b><br/><br/>• <b>Space</b> — a macOS virtual desktop on a single display. Each display has its own list.<br/>• <b>Sync group</b> — a list of displays that should track each other. When any one switches Space, the others follow.<br/>• <b>Trigger display</b> — the display the user actually switched. <b>Target display</b> — another display in the same sync group that we drive to match.<br/>• <b>Watcher</b> = hs.spaces.watcher. Fires our callback on any Space change. Does NOT tell us which display — we have to diff.<br/>• <b>gotoSpace</b> = hs.spaces.gotoSpace. Programmatically switches a display to a given Space. macOS drops rapid back-to-back calls — hence switchDelay.<br/>• <b>lastActiveSpaces</b> — snapshot of prior per-display Space state. We diff against this to find what changed.<br/>• <b>is_running</b> <i>(roadmap rename of syncInProgress)</i> — simple boolean. true while dispatching gotoSpace calls and through the post-chain debounce. Single global flag, not per-group.</div>"]:::keybox
+    KEY["<div style='text-align: left;'><b>Key concepts — read this first</b><br/><br/>• <b>Space</b> — a macOS virtual desktop on a single display. Each display has its own list.<br/>• <b>Sync group</b> — a list of displays that should track each other. When any one switches Space, the others follow.<br/>• <b>Trigger display</b> — the display the user actually switched. <b>Target display</b> — another display in the same sync group that we drive to match.<br/>• <b>Spaces watcher</b> = hs.spaces.watcher. Fires on Space changes — primary entry path.<br/>• <b>Screen watcher</b> = hs.screen.watcher. <i>(new in v3)</i> Fires on display layout changes (plug/unplug, lid open/close, rearrange) — second entry path.<br/>• <b>gotoSpace</b> = hs.spaces.gotoSpace. Dispatch only — v3 verifies via polling rather than waiting an arbitrary time.<br/>• <b>lastActiveSpaces</b> — snapshot of prior per-display Space state. <i>v3 writes it eagerly per target</i> before each dispatch; that's how echoes get absorbed.<br/>• <b>syncInProgress</b> — boolean. true during the chain's polling window. v3 window ≈ actual chain duration; v0.2 window was chain + debounce padding (~1.7s for 4 displays).<br/>• <b>pollTimeout</b> — upper bound on waiting for a single gotoSpace to verify. ~1 s. Replaces fixed switchDelay.</div>"]:::keybox
     classDef keybox fill:#0d1a26,stroke:#4ab3c6,color:#cfe6f0,text-align:left
 
     %% ============================================================
-    %% MAIN FLOW
+    %% ENTRY PATH 1 — USER SWIPE → SPACES WATCHER
     %% ============================================================
 
     U(["<b>User switches a Space.</b><br/>Via Mission Control gesture, ⌃→/⌃←,<br/>a Dock click, or other macOS UI."]):::user
     OS["<b>macOS commits the switch.</b><br/>The chosen Space is now active on that display."]:::macos
-    W["<b>Watcher fires our callback.</b><br/>hs.spaces.watcher invokes our Lua callback —<br/>the only signal we get from macOS that something changed."]:::macos
+    W["<b>Spaces watcher fires our callback.</b><br/>hs.spaces.watcher invokes our Lua callback —<br/>the signal that a Space somewhere changed."]:::macos
 
     GATE_ENABLED{"<b>Is SpacesSync enabled?</b><br/>(false after the user toggles off via the<br/>toggle hotkey or :stop)"}:::decision
     SKIP_DISABLED[/"<b>Return — SpacesSync is off.</b><br/>How we got here: user pressed the toggle hotkey<br/>(default ⌃⌥⌘Y), or called spoon.SpacesSync:stop()<br/>from init.lua, the Hammerspoon console, or hs -c.<br/><br/>Why we still need this guard: when :stop runs,<br/>macOS may already be partway through calling our<br/>watcher function. You can't kill an in-flight call —<br/>so this guard makes that one straggler bail out<br/>instead of finishing a sync the user just stopped."/]:::terminal
 
-    GATE_RUNNING{"<b>Already running a sync chain?</b><br/>is_running == true while we are dispatching<br/>gotoSpace calls AND through the post-chain<br/>debounce window."}:::decision
-    DROP[/"<b>Drop the event.</b><br/>This is the whole point of is_running:<br/>swallow our own gotoSpace echoes and the<br/>phantom fires that follow Space animations.<br/>Side effect: real user swipes inside this<br/>~1.4s window are also dropped (see design panel)."/]:::terminal
+    GATE_RUNNING{"<b>Already running a sync chain?</b><br/>syncInProgress == true while we are dispatching<br/>and polling for verification of gotoSpace calls."}:::decision
+    DROP[/"<b>Drop the event.</b><br/>Whole point of syncInProgress: swallow our own<br/>gotoSpace echoes that fire while we're still polling.<br/><br/>Window length in v3 ≈ actual chain polling time<br/>(no more debounce padding). On a fast settle this<br/>can be &lt;100 ms; on a slow settle bounded by pollTimeout<br/>per target. Real user swipes inside this window are still<br/>dropped, but the window is much smaller than v0.2's<br/>1.1–1.7 s ceiling."/]:::terminal
 
     DIFF["<b>Diff to find what changed.</b><br/>Compare hs.spaces.activeSpaces against lastActiveSpaces<br/>to find which display(s) just switched."]:::spoon
-    FIND{"<b>Did anything actually change?</b><br/>Did at least one display's active Space change<br/>since the last snapshot?"}:::decision
-    NO_CHANGE["<b>No actual Space change — exit.</b><br/>The watcher fires on more than real Space switches:<br/>Mission Control opening, display reconfiguration,<br/>animation settling, Stage Manager events.<br/>The diff confirms nothing actually changed —<br/>refresh the snapshot defensively and exit."]:::spoon
+    FIND{"<b>Did anything actually change?</b><br/>Did at least one display's active Space change<br/>since the last snapshot?<br/><br/>Note: if multiple displays changed in the same<br/>watcher fire, only the FIRST one found becomes the trigger.<br/>The others are folded into the baseline silently.<br/>(See OmniFocus task on multi-changed handling.)"}:::decision
+    NO_CHANGE["<b>No actual Space change — exit.</b><br/>The watcher fires on more than real Space switches:<br/>Mission Control opening, animation settling,<br/>Stage Manager events. The diff confirms nothing<br/>actually changed — refresh the snapshot defensively<br/>and exit. <i>v3 also reaches this from gotoSpace echoes</i><br/><i>because eager writes already updated the baseline.</i>"]:::spoon
 
     LOOKUP["<b>Find the trigger's sync group.</b><br/>Map the trigger display's UUID → position number,<br/>then scan syncGroups for a group containing that position."]:::spoon
     GROUP{"<b>Trigger in a sync group?</b><br/>Is the trigger display a member of any group?"}:::decision
 
-    INDEPENDENT["<b>Independent display — nothing to sync.</b><br/>Trigger is not in any sync group.<br/>We never set is_running on this path,<br/>so there's no chain to wait out and<br/>no flag to clear afterward."]:::spoon
+    INDEPENDENT["<b>Independent display — nothing to sync.</b><br/>Trigger is not in any sync group.<br/>We dispatch zero gotoSpace calls on this path,<br/>so there are no echoes to worry about — which is<br/>why we don't need syncInProgress here."]:::spoon
 
-    LOCK["<b>Set is_running = true.</b><br/>From now until the post-chain debounce expires,<br/>watcher fires are dropped."]:::spoon
+    LOCK["<b>Set syncInProgress = true.</b><br/>From now until the chain's last verify completes,<br/>spaces-watcher fires are dropped. No debounce padding —<br/>the gate clears immediately when polling completes."]:::spoon
+
+    COMPUTE_EXPECTED["<b>Compute the expected end state.</b> <i>(new in v3)</i><br/>Snapshot hs.spaces.activeSpaces; this is the starting world.<br/>For each target in the sync group, replace its entry with<br/>the Space ID at the trigger's index on that target.<br/><br/>The result is a per-display UUID → Space ID map describing<br/>exactly what we want the world to look like when the chain finishes.<br/>This single map drives both the eager writes during the chain<br/>AND the verification at chain end — one source of truth."]:::new
 
     SYNCNEXT[/"<b>Iterate target displays.</b><br/>Targets = sync-group members minus the trigger.<br/>Start at i = 1."/]:::spoon
-    TARGET["<b>Sync this target to the trigger's index.</b><br/>1. Compute the Space ID at the trigger's index<br/>   on this target display.<br/>2. Dispatch hs.spaces.gotoSpace targetSpaceID.<br/>3. macOS animates the Space switch on the target."]:::spoon
-    DELAY["<b>Wait switchDelay (0.3 s).</b><br/>macOS silently drops back-to-back gotoSpace calls;<br/>the gap lets each one settle before the next is dispatched."]:::macos
+
+    %% --- v3 NEW: fire-and-verify replaces fire-and-wait ---
+    EAGER_WRITE["<b>Eager-write target's baseline.</b> <i>(new in v3)</i><br/>Set lastActiveSpaces[targetUUID] = expectedState[targetUUID]<br/>BEFORE dispatching gotoSpace. (We already computed the<br/>expected end state at chain start; this just lifts the<br/>relevant entry into the live baseline.) The watcher fire<br/>that confirms our dispatch then diffs to no-change<br/>and exits via NO_CHANGE — no debounce window needed."]:::new
+    DISPATCH["<b>Dispatch hs.spaces.gotoSpace.</b><br/>Compute the target Space ID at the trigger's index<br/>on this target display, then call gotoSpace.<br/>macOS animates the Space switch on the target."]:::spoon
+    POLL["<b>Poll for verification.</b> <i>(replaces switchDelay in v3)</i><br/>Every ~30 ms, re-read hs.spaces.activeSpaceOnScreen(target).<br/>Continue when it matches the expected Space ID,<br/>OR pollTimeout (~1 s) elapses — whichever comes first."]:::new
+    VERIFY{"<b>Did the target reach the expected Space?</b><br/>If yes — verified, move on.<br/>If no (poll timeout) — macOS dropped the dispatch<br/>or settle was unexpectedly slow."}:::decision
+    DROPPED_LOG["<b>Log dispatch drop.</b><br/>Warning level: 'target X: gotoSpace did not land<br/>within pollTimeout.' Don't block the chain —<br/>continue to the next target. User will see the<br/>drift and re-swipe; that's the recovery path."]:::new
     MORE{"<b>More targets?</b><br/>Any target displays remaining in the sync group?"}:::decision
+
+    VERIFY_END_STATE["<b>Verify world matches our model.</b> <i>(universal final step, new in v3)</i><br/>The watcher's central invariant: lastActiveSpaces matches actual.<br/>We re-arm only when that invariant holds.<br/><br/>Read currentSpaces = hs.spaces.activeSpaces.<br/>Diff against state.lastActiveSpaces (which every path<br/>has just updated to its expected post-state).<br/><br/>For each UUID in lastActiveSpaces:<br/>• currentSpaces[uuid] missing → display vanished<br/>• currentSpaces[uuid] != lastActiveSpaces[uuid] → at wrong Space<br/>For each UUID in currentSpaces not in lastActiveSpaces:<br/>• A display appeared (reconfig race the screen-watcher missed)<br/><br/>Log per mismatch. After logging, refresh<br/>lastActiveSpaces = currentSpaces — restore the invariant<br/>so the NEXT watcher fire diffs against truth.<br/><br/>Runs on EVERY path that ends in DONE: NO_CHANGE,<br/>independent, sync-group, screen-reconfig.<br/>The path-specific work has already updated our model;<br/>this confirms the world matches before we hand control back."]:::new
 
     POPUP["<b>Show popup on trigger display.</b><br/>The active Space index with names from the<br/>workspace name store. Auto-dismisses after popupDuration."]:::ui
 
-    DEBOUNCE["<b>Start debounce timer (0.8 s).</b><br/>is_running stays true through this window so<br/>phantom fires from animation settling are still<br/>dropped (they fire after the last gotoSpace dispatch)."]:::spoon
+    CLEAR["<b>Clear syncInProgress — re-arm.</b> <i>(simplified in v3)</i><br/>The last target verified (or timed out).<br/>Set syncInProgress = false.<br/>No debounce wait — eager writes already absorb<br/>any echoes that may still arrive."]:::new
 
-    REENABLE["<b>Clear is_running — re-arm watcher.</b><br/>Set is_running = false<br/>(this is the half of the toggle we owe<br/>after raising it for the sync-group path);<br/>refresh lastActiveSpaces from current state;<br/>watcher is ready for the next user switch."]:::spoon
+    UPDATE_BASELINE["<b>Update lastActiveSpaces baseline.</b><br/>Used by the independent-display path:<br/>set lastActiveSpaces = currentSpaces<br/>so the next watcher fire diffs against<br/>the post-switch state."]:::spoon
 
-    UPDATE_BASELINE["<b>Update lastActiveSpaces baseline.</b><br/>Set lastActiveSpaces = currentSpaces<br/>so the next watcher fire diffs against<br/>the post-switch state."]:::spoon
-    DONE(["<b>Watcher armed.</b><br/>Ready for the next user Space switch."]):::terminal
+    DONE([<b>Watcher armed.</b><br/>Ready for the next event from either watcher.]):::terminal
 
     %% ============================================================
-    %% EDGES
+    %% ENTRY PATH 2 — DISPLAY RECONFIG → SCREEN WATCHER (new in v3)
+    %% ============================================================
+
+    RECONFIG([<b>Display layout changes.</b><br/>Monitor plugged/unplugged, lid open/close,<br/>dock/undock, displays rearranged in System Settings,<br/>resolution change.]):::user
+    SW["<b>Screen watcher fires our callback.</b> <i>(new in v3)</i><br/>hs.screen.watcher invokes our Lua callback.<br/>Distinct from spaces-watcher — this fires on layout change,<br/>not on Space change."]:::macos
+
+    RECONFIG_GATE_ENABLED{"<b>Is SpacesSync enabled?</b><br/>If not, return — same logic as the swipe path."}:::decision
+    RECONFIG_SKIP[/"<b>Return — SpacesSync is off.</b>"/]:::terminal
+
+    RECONFIG_BAIL_GATE{"<b>Was a sync chain in flight?</b><br/>If yes, its targets may have just disappeared<br/>or shifted positions — we need to abort cleanly."}:::decision
+    BAIL_CHAIN["<b>Abort the in-flight chain.</b><br/>Set syncInProgress = false.<br/>Stop pendingSyncTimer.<br/>Log at info: 'Reconfig during chain — aborting.'"]:::new
+
+    REBUILD_MAP["<b>Rebuild position map.</b><br/>Re-read hs.screen.allScreens, sort by frame x then y,<br/>reassign position numbers in reading order.<br/>Update positionToUUID, uuidToPosition, totalScreens."]:::new
+
+    REFRESH_BASELINE["<b>Refresh lastActiveSpaces.</b><br/>The set of UUIDs has likely changed.<br/>Re-snapshot from current state so the next<br/>spaces-watcher fire has a valid baseline to diff against."]:::new
+
+    VALIDATE_CONFIG["<b>Validate syncGroups against new layout.</b><br/>For each position N referenced in syncGroups,<br/>check N ≤ totalScreens. If any reference is now<br/>out of range, log a warning so the user knows<br/>their config refers to a display that's not connected."]:::new
+
+    STATUS_HUD["<b>Show status HUD on main display.</b><br/>'SpacesSync: display layout changed.'<br/>The user knows we noticed and adapted.<br/>Without this, reconfig would be silent."]:::ui
+
+    %% ============================================================
+    %% EDGES — entry path 1 (swipe)
     %% ============================================================
 
     U --> OS --> W --> GATE_ENABLED
     GATE_ENABLED -- no --> SKIP_DISABLED
     GATE_ENABLED -- yes --> GATE_RUNNING
 
-    GATE_RUNNING -- "yes — chain is running" --> DROP
+    GATE_RUNNING -- "yes — chain polling" --> DROP
     GATE_RUNNING -- "no — idle" --> DIFF --> FIND
-    FIND -- no --> NO_CHANGE --> DONE
+    FIND -- no --> NO_CHANGE --> VERIFY_END_STATE
     FIND -- yes --> LOOKUP --> GROUP
 
     GROUP -- no --> INDEPENDENT --> POPUP
-    GROUP -- yes --> LOCK --> SYNCNEXT --> TARGET --> DELAY --> MORE
+    GROUP -- yes --> LOCK --> COMPUTE_EXPECTED --> SYNCNEXT --> EAGER_WRITE --> DISPATCH --> POLL --> VERIFY
+    VERIFY -- yes --> MORE
+    VERIFY -- "no — timeout" --> DROPPED_LOG --> MORE
     MORE -- yes --> SYNCNEXT
     MORE -- no --> POPUP
 
-    POPUP -- "independent path:<br/>(is_running was never set —<br/>no debounce or re-arm needed)" --> UPDATE_BASELINE --> DONE
-    POPUP -- "sync-group path:<br/>(is_running is true —<br/>must debounce, then clear it)" --> DEBOUNCE --> REENABLE --> DONE
+    POPUP -- "independent path:<br/>(no gotoSpace dispatched →<br/>no chain to clear)" --> UPDATE_BASELINE --> VERIFY_END_STATE
+    POPUP -- "sync-group path:<br/>(chain finished →<br/>clear the flag)" --> CLEAR --> VERIFY_END_STATE
+    VERIFY_END_STATE --> DONE
 
     %% ============================================================
-    %% DESIGN INTENT — what we deliberately do and don't do
+    %% EDGES — entry path 2 (reconfig)
     %% ============================================================
 
-    DESIGN["<div style='text-align: left;'><b>Design intent — what we accept and what we don't try to fix</b><br/><br/><b>The goal:</b> only human-initiated swipes trigger the sync system. Our own gotoSpace calls must NOT cause secondary syncs.<br/><br/><b>How we achieve it:</b> a single global is_running boolean. Set true at chain start, cleared after debounce. Every watcher fire during that window is dropped, no questions asked.<br/><br/><b>What gets dropped (intentionally):</b><br/>• ✅ Echoes of our own gotoSpace dispatches — the whole point<br/>• ✅ Phantom fires from macOS Space animations settling — happens during debounce, also dropped<br/><br/><b>What gets dropped (accepted side effect):</b><br/>• ⚠ Real user swipes inside the ~1.4s ignore window. We accept this. Users don't typically swipe multiple times in under a second; if it happens, the user just swipes again. Not worth solving.<br/><br/><b>What we deliberately don't build:</b><br/>• ⊘ Pending trigger / drain step / bounded retry loop — overengineering for a use case that doesn't exist.<br/>• ⊘ Echo classifier (compare changed Space against expectedActiveSpaces) — solves the same non-problem.<br/>• ⊘ Eager baseline update (write lastActiveSpaces[target] before each gotoSpace) — would let us drop is_running entirely, but adds correctness risk if gotoSpace is silently dropped by macOS. Not worth the invasiveness.<br/><br/><b>Difference from CURRENT:</b> functionally none. Possible cosmetic improvement: rename syncInProgress to is_running for readability. That's it.</div>"]:::designbox
+    RECONFIG --> SW --> RECONFIG_GATE_ENABLED
+    RECONFIG_GATE_ENABLED -- no --> RECONFIG_SKIP
+    RECONFIG_GATE_ENABLED -- yes --> RECONFIG_BAIL_GATE
+    RECONFIG_BAIL_GATE -- yes --> BAIL_CHAIN --> REBUILD_MAP
+    RECONFIG_BAIL_GATE -- no --> REBUILD_MAP
+    REBUILD_MAP --> REFRESH_BASELINE --> VALIDATE_CONFIG --> STATUS_HUD --> VERIFY_END_STATE
+
+    %% ============================================================
+    %% DESIGN INTENT — what v3 changes vs. v0.2
+    %% ============================================================
+
+    DESIGN["<div style='text-align: left;'><b>Design intent — v3 verify-based redesign</b><br/><br/><b>The goal:</b> only human-initiated swipes trigger sync. Our gotoSpace echoes must not cause secondary syncs. Plus: the system should fail loudly when something is genuinely wrong.<br/><br/><b>How v3 achieves it:</b><br/>• <b>Per-target verification via polling.</b> Each gotoSpace is followed by a poll loop that waits for hs.spaces.activeSpaceOnScreen(target) to match the expected Space ID, with a pollTimeout fallback. Replaces the fragile fixed switchDelay.<br/>• <b>Eager lastActiveSpaces writes per target.</b> Before each dispatch, we write the expected post-switch state into our baseline. Echoes that arrive after the chain naturally diff to no-change and exit via NO_CHANGE — no debounce window needed.<br/>• <b>syncInProgress gate, narrow.</b> Still needed to suppress watcher fires during the in-flight polling window (when our eager writes don't yet match macOS's actual state). But it clears immediately when polling completes — no debounce padding.<br/>• <b>Screen watcher as second entry path.</b> hs.screen.watcher fires on display layout changes; we rebuild the position map, refresh the baseline, validate the config, and show a status HUD. No more silent breakage on monitor unplug.<br/>• <b>Hard block on missing Accessibility at :start.</b> hs.spaces.gotoSpace and hs.eventtap both require Accessibility permission. If revoked or never granted, :start fails loudly with an alert; no silent broken state.<br/><br/><b>What v3 drops vs. v0.2:</b><br/>• ⊖ Fixed switchDelay (0.3 s × N) → variable polling.<br/>• ⊖ debounceSeconds (0.8 s) → eliminated entirely. Eager writes absorb echoes.<br/>• ⊖ ~1.7 s ignore window for 4 monitors → roughly the actual polling time.<br/>• ⊖ Static position map → actively maintained via screen watcher.<br/>• ⊖ Silent Accessibility failure → loud hard block.<br/><br/><b>What v3 still accepts:</b><br/>• ⚠ Real user swipes inside the (much smaller) chain polling window are still dropped — polling doesn't queue them. User re-swipes if needed. Window is now bounded by actual macOS settle, not an arbitrary ceiling.<br/>• ⚠ If macOS drops a gotoSpace and we can't verify within pollTimeout, we log warning and continue. No automatic retry. User re-swipes; that's the recovery.<br/><br/><b>Failure modes that loudly tell the user something is wrong:</b><br/>• ✅ :start with Accessibility revoked → alert + abort<br/>• ✅ syncInProgress stuck → watchdog clears it, logs at error level<br/>• ✅ gotoSpace verification timeout → warning log per affected target<br/>• ✅ Display reconfig → status HUD + log<br/><br/><b>Open follow-up tasks (filed in OmniFocus, not blocking):</b><br/>• Per-display 'currently driving' set to replace global syncInProgress (multi-group correctness)<br/>• Stage Manager / fullscreen Spaces support<br/>• Multi-changed-display handling<br/>• Polling spike to calibrate pollTimeout and Model A vs Model B</div>"]:::designbox
     classDef designbox fill:#1f1d0d,stroke:#d4a853,color:#f0e8c8,text-align:left

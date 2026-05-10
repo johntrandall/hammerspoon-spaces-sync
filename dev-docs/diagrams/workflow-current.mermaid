@@ -16,7 +16,7 @@ flowchart TD
     GATE1{state.enabled?}:::decision
     GATE2{syncInProgress?}:::decision
     DIFF[Diff activeSpaces<br/>vs lastActiveSpaces]:::spoon
-    FIND{Any UUID<br/>changed?}:::decision
+    FIND{"Any UUID changed?<br/>(if multiple, first found wins —<br/>see roadmap note)"}:::decision
 
     LOOKUP[getTargetsFor<br/>changedUUID]:::spoon
     GROUP{Trigger in<br/>a sync group?}:::decision
@@ -59,6 +59,6 @@ flowchart TD
         N1[switchDelay: macOS drops<br/>rapid back-to-back gotoSpace calls]
         N2[syncInProgress + debounceSeconds:<br/>prevents the watcher reacting<br/>to its own gotoSpace]
         N3[lastActiveSpaces snapshot:<br/>identifies which display<br/>the user actually switched]
-        N4["Ignore window =<br/>numTargets × switchDelay + debounceSeconds<br/>≈ 1.4s for a 3-display group with defaults"]
+        N4["Ignore window =<br/>numTargets × switchDelay + debounceSeconds<br/>1.1s (2-display) / 1.4s (3) / 1.7s (4) at defaults<br/>Reduce Motion OFF can push real settle past the window"]
     end
     style LegendBox fill:#222,stroke:#666,color:#ccc
