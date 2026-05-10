@@ -262,12 +262,14 @@ With Model B confirmed, both options are technically viable, but **eager-writes-
 
 **Recommendation: keep the eager-write design but switch to observed-value variant.**
 
-### 6.3 Knock-on diagram changes
+### 6.3 Knock-on diagram changes (applied 2026-05-10)
 
-- Remove `MIN_GAP` node from `workflow-roadmap.mermaid` POLL → MORE edge.
-- Update `POLL` node text: "Calibrated via F-010 spike: Model B holds — polling alone is a sufficient ready signal. pollTimeout = 2 s covers slow settle."
-- Update `EAGER_WRITE` node: clarify that the write uses the observed post-poll value, not the precomputed expected value.
-- Reference F-010 as the source of empirical parameters in the design-intent panel.
+All four applied to `workflow-roadmap.mermaid`:
+
+- ✅ Removed `MIN_GAP` node from POLL → MORE edge. Edge now goes POLL → VERIFY → OBSERVED_WRITE → MORE directly.
+- ✅ `POLL` node text updated: "Calibrated via F-010 polling spike: Model B holds — polling alone is a sufficient ready signal. Mean flip latency 753 ms; pollTimeout 2 s covers slow settle."
+- ✅ `EAGER_WRITE` node was renamed to `OBSERVED_WRITE` and repositioned after VERIFY. Both VERIFY-yes and VERIFY-no-timeout branches converge on it; it reads `activeSpaceOnScreen(target)` once more and writes that observed value into `state.lastActiveSpaces[targetUUID]`.
+- ✅ Design-intent panel cites F-010 §6.1 / §6.2 / §7 as the source of empirical parameters and threats-to-validity.
 
 ## 7. Threats to validity
 

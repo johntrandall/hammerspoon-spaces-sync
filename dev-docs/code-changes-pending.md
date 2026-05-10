@@ -4,7 +4,7 @@ Running list of code changes for the v3 redesign and the bug fixes that go along
 
 Last updated: 2026-05-10 (after second council review). Reflects design decisions made after BOTH council reviews:
 - **Fire and verify** (per-target polling with timeout) replaces fixed `switchDelay`
-- **Eager `lastActiveSpaces` writes** per target before each dispatch — eliminates `debounceSeconds`
+- **Per-target observed-value `lastActiveSpaces` writes** — after each poll-verify, write the value `activeSpaceOnScreen` actually returned. Eliminates `debounceSeconds` (Q1 resolution per F-010 §6.2)
 - **Hard block** on missing Accessibility at `:start`
 - **Second entry path** via `hs.screen.watcher` for display reconfig
 
@@ -22,13 +22,14 @@ See `dev-docs/diagrams/workflow-roadmap.mermaid` for the v3 design diagram.
 
 ## ⚠ HARD PREREQUISITES — must land before any v3 code
 
-### P1. Polling spike (calibration, not "decide if")
+### P1. Polling spike — ✅ DONE (2026-05-10)
 
-The OmniFocus task originally framed the spike as "decide if polling is the right approach." After the second council review, that question is answered (yes, polling is right, but with a `MIN_DISPATCH_GAP` floor). Re-scope the spike to **calibrate**:
+Resolved by `dev-docs/findings/F-010-polling-model-a-vs-b.md`. Empirical result: **Model B holds** — `activeSpaceOnScreen` flips at end of MC animation; polling alone is a sufficient ready signal. 0 drops in 160 trials at gap=0. `MIN_DISPATCH_GAP = 0` (removed from design); `pollTimeout = 2.0 s` (revised up from 1.0 s).
 
-- Run experiments E1 (when does activeSpaceOnScreen flip vs animation) and E2 (drop-rate vs inter-dispatch gap) from the spike's note.
-- Output: empirical floor for `MIN_DISPATCH_GAP` (the council expects 150-200ms).
-- Without this data, v3 ships a hypothesis. The Hammerspoon-expert review cited project's own findings (F-001/F-002/F-009) as evidence that **Model A is more likely than Model B** — meaning polling alone is unsafe.
+F-010 also surfaced these out-of-scope items now filed as follow-ups (not blocking v3):
+- macOS 16 (Tahoe) — re-run F-010 when porting
+- Reduce Motion ON regime — re-run E1; if flip drops below ~200 ms, re-run E2
+- Heavy CPU/GPU load regime — re-measure pollTimeout headroom under stress
 
 ### P2. Watcher single-exit refactor
 
@@ -40,7 +41,7 @@ Per CLAUDE.md: "No automated tests. Testing requires a multi-monitor Mac." Write
 
 ## V3 core changes (one coordinated landing)
 
-**The coordinated bundle.** Items 0+1+2+5+5b cannot be sub-divided per implementation-feasibility review. Eager writes without poll-verify creates phantom states; dropping debounce without eager writes causes echo loops. Ship together or not at all.
+**The coordinated bundle.** Items 0+1+2+5+5b cannot be sub-divided per implementation-feasibility review. Per-target observed-value writes depend on poll-verify producing the value to write; dropping debounce depends on those writes being in place to absorb echoes. Ship together or not at all.
 
 ### 0. 🏗 Compute `expectedEndState` at chain start (the load-bearing data structure)
 
@@ -68,10 +69,10 @@ end
 
 **Why it matters:** this single map is the source of truth for the rest of the chain. Used twice:
 
-1. **During the chain (item 2 — eager writes):** `state.lastActiveSpaces[targetUUID] = expectedEndState[targetUUID]` — no separate "compute expected ID per target" logic needed.
+1. **During the chain (item 1 — dispatch):** `gotoSpace(expectedEndState[targetUUID])` — gives `syncTarget` the per-target Space ID to ask Mission Control for. (Note: `lastActiveSpaces` itself is NOT written from this map; per Q1 we use the post-poll observed value — see item 2.)
 2. **At end of chain (item 5b — verification):** diff `hs.spaces.activeSpaces()` against `expectedEndState` and log mismatches. The diff itself tells you what's wrong; no role-based branching at check time.
 
-This unification simplifies the implementation, eliminates a class of bugs (computing the expected ID inconsistently in the eager-write step vs. the verify step), and makes the chain's intent explicit in one place.
+This unification simplifies the implementation, eliminates a class of bugs (computing the expected ID inconsistently in the dispatch step vs. the verify step), and makes the chain's intent explicit in one place.
 
 **Storage:** local to the chain; doesn't need to live on `state` unless we want it queryable from `:status()`.
 
@@ -102,24 +103,38 @@ if myGen ~= state.chainGeneration then return end
 
 **Replaces:** the fixed `switchDelay` wait between dispatches.
 
-**Shape (v3 + council mitigations):**
+**Shape (v3 + council + F-010 mitigations):**
 ```
 For each target i:
-  1. Eager-write: state.lastActiveSpaces[targetUUID] = expectedEndState[targetUUID].
-     (Computed at chain start in item 0.)
-  2. Dispatch hs.spaces.gotoSpace(expectedEndState[targetUUID]).
-  3. Poll hs.spaces.activeSpaceOnScreen(target) every ~30 ms.
+  0. Skip-or-dispatch decision:
+     • If expectedEndState[targetUUID] equals activeSpaceOnScreen(target) → already at
+       expected Space (or target has no Space at trigger's index, expectedEndState
+       was left at current — see item 0). Skip the rest of this iteration.
+     • Otherwise → proceed to step 1.
+  1. Dispatch hs.spaces.gotoSpace(expectedEndState[targetUUID]).
+  2. Poll hs.spaces.activeSpaceOnScreen(target) every ~30 ms.
      Each poll iteration re-checks state.enabled AND chainGeneration; bails if either changed.
-     Stop when activeSpaceOnScreen matches expectedSpaceID OR pollTimeout (~1 s) elapses.
-  4. If matched → continue. If timeout → log warning, continue.
-  5. Wait MIN_DISPATCH_GAP (~150 ms, calibrate via spike) before dispatching the NEXT target.
-     activeSpaceOnScreen flips when macOS commits the Space, but Mission Control's accessibility
-     tree may not be ready for the next gotoSpace yet (Model A). The floor covers MC's UI teardown.
+     Stop when activeSpaceOnScreen matches expectedSpaceID OR pollTimeout (~2 s) elapses.
+  3. Branch on outcome:
+     • Matched (success) → continue.
+     • Timeout (macOS dropped) → log at WARN level, continue.
+  4. Read activeSpaceOnScreen(target) once more and write the OBSERVED value into
+     state.lastActiveSpaces[targetUUID]. (See Q1 resolution: observed-value writes,
+     not pre-dispatch expected-value writes.) On success this equals expectedSpaceID;
+     on timeout it captures macOS's actual stuck state, which the end-of-chain
+     verifier will flag.
+  5. Continue to next target — no inter-dispatch wait. F-010 confirmed Model B
+     (160/160 dispatches at gap=0); polling alone is a sufficient ready signal.
 ```
 
+**Step 0 covers two cases cleanly:**
+- Target has fewer Spaces than the trigger's index (`getSpaceAtIndex` returned nil at chain start; item 0 left `expectedEndState[targetUUID]` at its snapshot value, which equals `activeSpaceOnScreen` now too). Skip — we already know there's no Space to go to.
+- Target is already at the trigger's index (no-op sync). Skip — saves one round of dispatch + ~750 ms of polling per already-aligned target.
+
+Adversarial round 4 surfaced this: without step 0, the chain dispatches no-op `gotoSpace(currentSpaceID)` calls in both cases. Behavior is technically correct but spammy. Step 0 makes the no-op explicit.
+
 **New config knobs:**
-- `obj.pollTimeout = 1.0` (seconds). Replaces fixed `switchDelay`.
-- `obj.minDispatchGap = 0.15` (seconds). New floor between dispatches even when polling green-lights.
+- `obj.pollTimeout = 2.0` (seconds). Replaces fixed `switchDelay`. F-010 §6.1 calibration: ≈ 2.5× idle worst case (897 ms) for slow-settle headroom.
 - `obj.pollInterval = 0.030` (seconds). Polling cadence.
 
 **Old knobs (deprecated, not removed):** `obj.switchDelay` and `obj.debounceSeconds`. Implementation-feasibility review flagged these as part of the public API at lines 99-113 of init.lua. Keep them with deprecation warnings for one release; ignore values silently. Removing in next major version.
@@ -128,17 +143,19 @@ For each target i:
 
 **Why polling instead of fixed wait:** the system is wonky enough that arbitrary waits feel fragile. Polling proceeds when macOS actually settled, not when a clock fires. Worst case (timeout) is roughly the same wait as today; best case is much shorter.
 
-### 2. 🏗 Eager `lastActiveSpaces` writes
+### 2. 🏗 Per-target `lastActiveSpaces` writes (observed-value variant per Q1)
 
-**Where:** New step inside the chain, before each `gotoSpace` dispatch.
+**Where:** Step 4 of each per-target iteration in `syncNext` (after poll-verify completes).
 
 **Replaces:** the `debounceSeconds` post-chain wait.
 
-**Shape:** Before dispatching `gotoSpace(targetSpaceID)`, set `state.lastActiveSpaces[targetUUID] = targetSpaceID`. Subsequent watcher fires from our own dispatch see `currentSpaces[targetUUID] == lastActiveSpaces[targetUUID]` and exit via NO_CHANGE.
+**Shape:** After the per-target poll-verify (step 3 of item 1), read `activeSpaceOnScreen(target)` one more time and write it into `state.lastActiveSpaces[targetUUID]`. Subsequent watcher fires from our own `gotoSpace` see `currentSpaces[targetUUID] == lastActiveSpaces[targetUUID]` and exit via NO_CHANGE — no debounce window needed.
 
-**Knob removed:** `obj.debounceSeconds` (and its validation in `:start`).
+**Knob deprecated:** `obj.debounceSeconds`. Per implementation-feasibility review (item 1), keep the symbol parseable for one release cycle; ignore values silently. Removing in next major version.
 
-**Subtlety:** during the in-flight polling window, the eager write is "ahead of" macOS's actual state. The `syncInProgress` gate still suppresses watcher fires in that window so the false diff doesn't trigger anything. The gate clears immediately when polling completes (no padding).
+**Why observed value, not expected:** see F-010 §6.2 for the full empirical rationale. One-sentence summary: post-poll observed values cost no additional reads (we already poll), they equal the expected value on success, and on poll-timeout they capture macOS's actual stuck state — making `lastActiveSpaces` always match reality. Pre-dispatch expected-value writes would silently poison the baseline if a dispatch were dropped.
+
+**Sequencing note:** during the polling window itself, `state.lastActiveSpaces[target]` still reflects the PRE-dispatch state, not the in-flight expectation. The `syncInProgress` gate suppresses watcher fires during the window so the (briefly stale) diff doesn't trigger anything. Once polling completes, the observed-value write makes the baseline current. The gate clears immediately after the end-of-chain verifier (no debounce padding).
 
 ### 3. 🏗 `hs.screen.watcher` second entry path
 
@@ -175,7 +192,7 @@ end
 
 **Shape:** Once the last target verifies (or times out), set `syncInProgress = false` immediately. No `hs.timer.doAfter(debounceSeconds, ...)` wrapper.
 
-**Why safe:** eager writes mean any echoes that arrive after the gate clears diff to no-change and exit cleanly via NO_CHANGE.
+**Why safe:** the per-target observed-value writes (item 2) mean `lastActiveSpaces` matches macOS's actual confirmed state when the gate clears. Any echoes arriving after that diff to no-change and exit cleanly via NO_CHANGE.
 
 ### 5b. 🏗 End-of-chain verifier (sync-group path only — council scope reduction)
 
@@ -269,15 +286,27 @@ The earlier draft branched at check time on whether each display was a sync-grou
 
 **Problem:** `syncNext` recurses via `pendingSyncTimer` callbacks. If the timer is queued by `hs.timer` but its closure hasn't executed when `:stop()` runs, the chain keeps going because `syncNext` never re-checks `state.enabled`.
 
-**Fix:** Add `if not state.enabled then return end` at the top of `syncNext` (and at the top of the new poll loop).
+**Fix:** at the top of `syncNext` AND at the top of the new poll-loop tick (item 1), bail if EITHER `state.enabled` is false OR the captured `chainGeneration` no longer matches `state.chainGeneration` (item 0a). The two checks compose: `state.enabled` catches `:stop()`; `chainGeneration` catches BAIL_CHAIN, watchdog, and any other mid-chain abort.
+
+```lua
+if not state.enabled or myGen ~= state.chainGeneration then return end
+```
+
+**`:stop()` must also restore baseline truth.** A chain bailed mid-stream leaves `state.lastActiveSpaces` half-written (some targets have post-poll observed values; others still have pre-chain values). After bumping `chainGeneration` and stopping timers, `:stop()` should also do `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}`. Same fix in BAIL_CHAIN (diagram). Without it, the next watcher fire after `:start()` (or after another bail-and-recover) diffs against a Frankenstein baseline.
 
 ### 7. ⚠ Watchdog timer for stuck `syncInProgress` [B4]
 
 **Where:** new safety timer set when `syncInProgress = true`.
 
-**Bound:** `numTargets × pollTimeout + safety_margin` (~5 s).
+**Bound:** `numTargets × pollTimeout + safety_margin`. With item 1's `pollTimeout = 2.0 s` and a 4-display group (3 targets), bound is `3 × 2 + 2 = 8 s`. Adjust safety_margin to ≥ 1 s; total should comfortably exceed the worst-case chain duration computed in item 1's POLL spec. The bound deliberately does NOT include the popup display window — the popup is fire-and-forget; the watchdog is only protecting the chain itself.
 
-**Action on fire:** force-clear `syncInProgress = false`, log at error level: `"Sync watchdog fired — flag was stuck"`. Cheap insurance against unhandled errors anywhere in the chain.
+**Lifecycle integration:**
+- Register the watchdog timer in `state.chainTimers` (item 1) so `BAIL_CHAIN` and `:stop()` cancel it cleanly.
+- Capture `chainGeneration` (item 0a) in the watchdog closure; on fire, no-op if `myGen ~= state.chainGeneration` (a new chain has already started, the new one's watchdog will cover it).
+
+**Note on dependency:** the formula references `obj.pollTimeout` and `state.chainTimers` introduced in item 1 (stage 3). If this item ships in stage 2 (per the build order) before item 1 lands, hard-code `8 s` and a single `state.watchdogTimer` field; refactor when item 1 lands.
+
+**Action on fire (when generation matches):** force-clear `syncInProgress = false`, refresh `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}` (so the next watcher fire diffs against truth — see also item 6/BAIL fix), log at error level: `"Sync watchdog fired — flag was stuck"`. Cheap insurance against unhandled errors anywhere in the chain.
 
 ### 8. ⚠ `:start()` snapshot/setup-watcher race [B1]
 
@@ -289,18 +318,26 @@ The earlier draft branched at check time on whether each display was a sync-grou
 
 ### 9. 🛠 Consolidate `lastActiveSpaces` baseline writes [D2]
 
-**Where:** lines 959, 1000, 1011, 1025, 1043, 1254 in current code.
+Split into two parts so each can ship in its proper build stage:
 
-**Problem:** Six write sites today, two of them buggy (line 1025 redundant, line 1254 racy — see [B1]).
+**9a. Pure cleanup (stage 1 — pre-v3 foundation, no behavior change):**
 
-**Fix in v3:**
-- Line 959 (setupWatcher init) — KEEP
-- Line 1000 (NO_CHANGE) — KEEP
-- Line 1011 (INDEPENDENT path) — KEEP
-- Line 1025 (chain end, redundant) — REMOVE
-- Line 1043 (debounce timer) — REMOVE (debounce is gone)
-- Line 1254 (`:start()` race) — REMOVE
-- New: per-target eager writes inside the chain (one site per dispatch)
+- Line 1025 (chain end, redundant — debounce overwrites it 0.8 s later) — REMOVE
+- Line 1254 (`:start()` race with line 959 — see item 8) — REMOVE
+
+These are bug fixes that stand alone without v3. Safe to land first.
+
+**9b. v3-coupled (stage 3 — rolls into items 1+2):**
+
+- Line 1043 (debounce timer write) — REMOVE (debounce is gone in v3 — item 5)
+- New: per-target observed-value writes inside the chain (one site per target, after poll-verify) — landed as part of item 2
+
+This part cannot land without items 1+2. It is logically the *removal* of one write site (line 1043) plus the *addition* of N per-target write sites (item 2's responsibility); listed here only to keep the inventory complete.
+
+**Untouched (existing baseline-update sites that v3 keeps):**
+- Line 959 (setupWatcher init)
+- Line 1000 (NO_CHANGE branch)
+- Line 1011 (INDEPENDENT path)
 
 Optional: extract a `refreshBaseline()` or `setBaseline(uuid, spaceID)` helper.
 
@@ -328,25 +365,31 @@ These are real but won't ship with v3:
 
 ---
 
-## Open design question (post second council review)
+## Resolved design questions
 
-### Q1. Eager writes: keep with observed-value fix, or drop entirely?
+### Q1 — RESOLVED: per-target observed-value writes (per F-010 §6.2)
 
-The second council split on this:
+**The original split (historical):**
 
-- **Devil's-advocate proposed v2.5:** drop eager writes + `expectedEndState` + universal verifier entirely. Keep `syncInProgress` and shrink `debounceSeconds` to 0.2s. Captures ~80% of v3's correctness gains at ~30% of complexity. Defer eager writes until a logged drift event proves they're needed.
-- **Hammerspoon-expert proposed surgical fix:** keep eager writes BUT write the *observed* post-dispatch value (read after poll) instead of the *expected* value (write before dispatch). Eliminates the baseline-poisoning hazard when macOS drops a dispatch. Costs one extra `activeSpaceOnScreen` read per target — already cheap.
+- **Devil's-advocate v2.5** — drop eager writes, keep `syncInProgress`, shrink `debounceSeconds` to 0.2s.
+- **Hammerspoon-expert surgical fix** — keep the per-target write but use the *observed* post-poll value, not the *expected* pre-dispatch value.
 
-The trade-off:
-- v2.5 (drop): simpler model, ~150 LOC instead of ~280-360, fewer interacting invariants. Harder to detect mid-chain drift.
-- Observed-eager-write: keeps v3's ability to absorb echoes naturally via NO_CHANGE, fixes the poisoning hazard, marginal extra LOC.
+**Resolution (2026-05-10):** the polling spike (F-010) empirically confirmed Model B. **F-010 §6.2 is the canonical rationale** — read it for the empirical reasoning. One-line summary: observed-value writes cost no extra system calls (we already poll), match expected on success, and never lie on timeout. v2.5's debounce-shrink alternative leaves a residual echo window; observed-value writes close it entirely.
 
-**Decision deferred** — depends partly on the polling spike (P1) results. If Model A holds strongly, the observed-eager-write approach is more attractive (it's already paying the polling cost; might as well use the post-poll read as the source of truth). If Model B holds, v2.5's debounce-shrink is enough.
+**Implications for items above:**
+
+- Item 0 (`expectedEndState`) — KEEP. The chain-start expectation map is still useful: it tells `syncTarget` which Space ID to dispatch to per target. The Q1 resolution affects what we *write into `lastActiveSpaces`*, not what we use as the dispatch target.
+- Item 1 (per-target poll-verify) — adjust to write `lastActiveSpaces[targetUUID] = activeSpaceOnScreen(target)` (the observed value) at the **end** of each per-target verify, not at the **beginning** before dispatch. The expected value still drives the dispatch and the verify-target.
+- Item 2 — already retitled "Per-target `lastActiveSpaces` writes (observed-value variant per Q1)." Same place in the chain (per target), different value source (post-poll observation, not pre-dispatch expectation). Done.
+- Item 5b (end-of-chain verifier) — unchanged. Still scoped to sync-group path only, still runs before CLEAR.
+- `pollTimeout` raised to 2.0s per F-010 §6.1.
+
+The Q1 resolution adds zero new code paths; it just changes what value is written at each per-target write site.
 
 ## Decided NOT to do
 
-- **Pending trigger / drain step / bounded retry loop.** Council reviewed; not necessary now that we have eager writes + verification. Drops are still possible but are now bounded by actual chain duration, not an arbitrary ceiling. User re-swipes if needed.
-- **Echo classifier (`expectedActiveSpaces`).** Solved by eager writes.
+- **Pending trigger / drain step / bounded retry loop.** Council reviewed; not necessary now that we have per-target observed-value writes + end-of-chain verification. Drops are still possible but are now bounded by actual chain duration, not an arbitrary ceiling. User re-swipes if needed.
+- **Echo classifier (`expectedActiveSpaces`).** Solved by per-target observed-value writes (the baseline matches macOS's actual confirmed state, so echoes diff to no-change).
 - **`switchDelay` adaptive tuning.** Polling makes the question moot.
 
 ---
@@ -355,9 +398,9 @@ The trade-off:
 
 If we land v3 in stages rather than one giant patch:
 
-1. **Foundation (no behavior change):** item 9 (consolidate baseline writes), item 8 (fix `:start()` race). These are pure cleanup.
+1. **Foundation (no behavior change):** item 9a (remove redundant + racy baseline writes), item 8 (fix `:start()` race). These are pure cleanup. Note: item 9b is part of stage 3 (rolls into item 2).
 2. **Hardening (loud failures):** item 4 (Accessibility hard block), item 7 (watchdog), item 6 (`:stop` halt fix). These add safety nets without changing the sync flow.
-3. **Verify-based core:** items 1, 2, 5, 5b (per-target verify, eager writes, drop debounce, end-of-chain consistency check). The diagram's main change.
+3. **Verify-based core:** items 0, 0a, 1, 2, 5, 5b (compute expectedEndState, chainGeneration token, per-target poll-verify, per-target observed-value writes, drop debounce, end-of-chain consistency check). The diagram's main change. **Cannot be sub-divided** — see "coordinated bundle" note above.
 4. **Second entry path:** item 3 (screen watcher). Independent of the verify changes; can land before or after.
 5. **Diagnostics:** item 10 (`:status` method).
 
