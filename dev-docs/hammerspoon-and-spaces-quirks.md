@@ -149,6 +149,37 @@ A zero-delay `hs.timer` is the canonical Hammerspoon idiom for "yield once and r
 
 If Hammerspoon adds an `hs.startupCallback` symmetric to `hs.shutdownCallback`, this entire section can be deleted. The fix is straightforward — after `MJLuaCreate()` in `applicationDidFinishLaunching:`, schedule a `callStartupCallback()` helper via `dispatch_async(dispatch_get_main_queue(), ...)` so it fires on the next main-queue tick (i.e., after the delegate method has returned and the runloop has pumped). Three to five lines of code. No upstream issue existed as of 2026-04-10 — filing one would be a clean contribution.
 
+## `hs -c` blocks the runloop until its chunk returns
+
+`hs -c '...'` evaluates the Lua chunk synchronously in the running
+Hammerspoon process. The chunk runs to completion before the Hammerspoon
+runloop pumps again. This means a chunk that busy-waits (via
+`hs.timer.usleep` in a loop, or any other tight wait) prevents the
+runloop from firing the very async callbacks the chunk is waiting for —
+watchers, `hs.timer.doAfter` callbacks, accessibility events, all of it.
+
+If you need to observe an async result, split into multiple `hs -c`
+invocations with a shell sleep between:
+
+```bash
+hs -c 'dispatch_something_async()'
+sleep 1
+hs -c 'return read_result()'
+```
+
+State stashed in `_G` between invocations survives because the
+Hammerspoon Lua state is persistent across `hs -c` calls.
+
+A second related quirk: `hs.ipc` rejects rapid back-to-back invocations
+with `hs.ipc: Instance of [...] already recursing, refusing request` —
+chunks fired faster than ~100 ms apart sometimes don't execute. If a
+rejected chunk was mid-state-mutation, the running Spoon/script can be
+left in a half-state. Document recovery procedures for any test or
+script that drives Hammerspoon via the CLI.
+
+For the testing implications of both quirks, see
+`dev-docs/test-strategy.md` § Operational Notes.
+
 ## Hammerspoon API conventions
 
 - All APIs use **camelCase** naming

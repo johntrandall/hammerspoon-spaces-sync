@@ -6,16 +6,27 @@ Hammerspoon Spoon that synchronizes macOS Spaces across monitors in configurable
 
 **Read `dev-docs/hammerspoon-and-spaces-quirks.md` first.** It documents critical `hs.spaces` behaviors (async gotoSpace, dropped rapid calls, watcher loops, lazy load timing) that are not obvious from the API docs and caused real bugs during development.
 
-## Current work — v3 redesign
+## Current state — v0.3 (verify-based)
 
-A v3 redesign is in progress (designed, not yet implemented). If you're picking up implementation work, start at **`dev-docs/v3-implementation-handoff.md`** — it orients a fresh agent and points at the design package in the right reading order.
+v0.3 shipped (tag `v0.3`, commit `af5097e`). It replaced v0.2's
+fixed-`switchDelay`/`debounceSeconds` timing with poll-based
+verification per F-010. The original design package below remains as
+historical reference:
 
-The v3 design package:
-- `dev-docs/v3-implementation-handoff.md` — entry point for implementers
-- `dev-docs/code-changes-pending.md` — catalog of code changes (12 items, build order in 5 stages)
+- `dev-docs/v3-implementation-handoff.md` — implementation handoff (now archival)
+- `dev-docs/code-changes-pending.md` — catalog of changes (all v3 items implemented; P3 ✅ done)
 - `dev-docs/diagrams/workflow-roadmap.mermaid` — runtime flow diagram
 - `dev-docs/findings/F-010-polling-model-a-vs-b.md` — empirical basis for the verify-based design
 - `dev-docs/v3-vs-settings-track-harmonization.md` — interaction with the parallel settings/config GUI track
+
+## Testing strategy
+
+See `dev-docs/test-strategy.md` for the project's testing levels (L0,
+L3, L6 active; L1/L2/L4/L5/L7/L8 not active or deferred), gating
+defaults, and operational notes (`hs -c` runloop blocking, `hs.ipc`
+recursion recovery). The strategy is committed; the test code is not
+yet authored — the `## Testing` section below describes the manual
+fallback that remains in effect until automated tests land.
 
 ## Project Structure
 
@@ -31,7 +42,7 @@ The v3 design package:
 
 ## Testing
 
-No automated tests. Testing requires a multi-monitor Mac — `hs.spaces.gotoSpace()` needs real displays. Set logger to debug level (`spoon.SpacesSync.logger.setLogLevel('debug')`) and watch the Hammerspoon console.
+See `dev-docs/test-strategy.md` for the full strategy (L0, L3, L6 active; canonical sources, gating, operational notes). For interactive debugging: set logger to debug level (`spoon.SpacesSync.logger.setLogLevel('debug')`) and watch the Hammerspoon console.
 
 ## Publishing
 

@@ -10,6 +10,7 @@
 4. `dev-docs/findings/F-010-polling-model-a-vs-b.md` — empirical basis for `pollTimeout` and Q1.
 5. `dev-docs/hammerspoon-and-spaces-quirks.md` — gotchas about `hs.spaces`.
 6. `Source/SpacesSync.spoon/init.lua` lines 950-1060 — the current watcher, which P2 must refactor.
+7. `dev-docs/test-strategy.md` — testing levels, gating, and L6 operational notes (peer artifact to `manual-test-checklist.md`).
 
 After reading, you should be able to answer:
 - What does v3 change vs. v0.2 at a high level? (Polling-with-verify replaces fixed `switchDelay`/`debounceSeconds`; per-target observed-value baseline writes; second entry path via `hs.screen.watcher`; hard block on missing Accessibility.)

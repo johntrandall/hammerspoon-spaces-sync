@@ -305,7 +305,7 @@ Contributions welcome! Open an issue or submit a PR.
 Areas where help is especially useful:
 - Testing on other macOS versions and reporting results
 - Testing with non-standard monitor arrangements (vertical stacks, mixed resolutions)
-- Automated testing strategies (mocking `hs.spaces` for unit tests)
+- Authoring L0/L3/L6 tests against `dev-docs/test-strategy.md` (policy is committed; canonical test code is not yet written)
 
 ## License
 

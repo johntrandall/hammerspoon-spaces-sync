@@ -1,5 +1,7 @@
 # SpacesSync v3 Manual Test Checklist
 
+**Automated complement:** `dev-docs/test-strategy.md` (L0 / L3 / L6 policy).
+
 **Purpose:** verify v3 behavior against expected outcomes. Required prerequisite for landing v3 (item P3 in `code-changes-pending.md`).
 
 **How to use:**

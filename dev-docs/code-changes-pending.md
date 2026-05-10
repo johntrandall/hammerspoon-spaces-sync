@@ -35,9 +35,12 @@ F-010 also surfaced these out-of-scope items now filed as follow-ups (not blocki
 
 The current watcher callback (`init.lua:961-1057`) has 4 exit paths sprinkled through a 96-line anonymous closure. v3's universal verifier needs them to converge to a single tail. **Pure structural refactor** — no behavior change — but it's the largest single edit and is currently invisible in the diagram. Implementation-feasibility council flagged this as the load-bearing change that the planning doc didn't surface.
 
-### P3. Manual test checklist
+### P3. Manual test checklist — ✅ DONE (2026-05-10)
 
-Per CLAUDE.md: "No automated tests. Testing requires a multi-monitor Mac." Write `dev-docs/manual-test-checklist.md` covering ~18-22 scenarios (single swipe per group size, mid-chain disable, mid-chain monitor unplug/replug, lid close, Accessibility revoked, etc.) **before the first code change**. Run it against current v0.2 to establish baseline behavior, then re-run after each stage of v3 lands.
+`dev-docs/manual-test-checklist.md` written, baseline filled against v0.2,
+v3 actuals filled after implementation. Automated complement designed
+separately as `dev-docs/test-strategy.md` (test code itself not yet
+authored as of 2026-05-10).
 
 ## V3 core changes (one coordinated landing)
 
