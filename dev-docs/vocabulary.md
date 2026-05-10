@@ -231,6 +231,21 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 
 ---
 
+## Style: explicit beats terse in diagrams and labels
+
+In any artifact that will be **read out of context** — diagrams, settings-pane labels, tooltip popovers, log messages a user might read in the Hammerspoon console — prefer the explicit, repetitive noun phrase over a pronoun. The single extra word costs less than the formal ambiguity it removes.
+
+**Example:** "Switch the cursor display's group to the cursor display's current Space" beats "Switch the cursor display's group to its current Space." Both are grammatically defensible, but the second requires the reader to resolve "its" → which-of-two-possible-antecedents. In a sublabel that renders once and is then read by hundreds of users in different orders, explicit wins.
+
+This rule does **not** apply to:
+- Long-form prose (READMEs, vocab definitions like this one) where flow matters more than disambiguation.
+- Side annotations / designer-meta-commentary (they're read in document order, antecedents stay in scope).
+- Code identifiers (they have a different audience and tooling for resolving references).
+
+Verification rounds 3–5 oscillated on the Sync Now sublabel between "its" and "the cursor display's" — recording the rule here to break the loop. **Diagrams: explicit. Always.**
+
+---
+
 ## When this doc and the running code disagree
 
 Code wins for code identifiers. This doc wins for prose, comments, diagrams, ADRs, and any text the user might read. If you find drift, fix it — open a small PR that aligns one or the other.
