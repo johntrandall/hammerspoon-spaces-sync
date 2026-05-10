@@ -477,7 +477,7 @@
   }
 
   /* Segmented control — Mac-native pattern for picking 1 of N modes.
-     Used for "Sync mode: [Automatic | On demand only]". */
+     Used for "Sync mode: [Automatic | Manual]". */
   .segmented {
     display: inline-flex;
     background: rgba(255, 255, 255, 0.06);
@@ -626,7 +626,7 @@
         <div>
           <div class="title">"Displays have separate Spaces" is off</div>
           <div class="body-text">
-            All monitors share one Space — there's nothing to sync. Enable
+            All displays share one Space — there's nothing to sync. Enable
             the setting in <a href="#">System Settings → Desktop &amp; Dock →
             Mission Control</a>. macOS requires logout to apply.
           </div>
@@ -693,6 +693,10 @@
            "+ New group" item, dissolved when their last member leaves.
            ============================================================ -->
       <h3>Group Membership</h3>
+      <div class="section-hint">
+        Assign two or more displays to the same group to sync them.
+        Displays set to <em>None</em> stay independent.
+      </div>
       <div class="inset">
         <div class="group-row">
           <div class="pos">position 1</div>
@@ -780,14 +784,15 @@
         <div>
           <div class="label">Sync mode</div>
           <div class="sublabel">
-            <strong>Automatic</strong> — SpacesSync mirrors every Space
-            switch to the rest of its sync group. <strong>On demand only</strong> —
-            displays move independently; use <em>Sync Now</em> to switch them together.
+            <strong>Automatic</strong> — SpacesSync syncs every Space
+            switch to the rest of its sync group. <strong>Manual</strong> —
+            displays move independently; press <em>Sync Now</em> to bring
+            them together.
           </div>
         </div>
         <div class="segmented" role="radiogroup" aria-label="Sync mode">
           <button class="seg active" role="radio" aria-checked="true">Automatic</button>
-          <button class="seg" role="radio" aria-checked="false">On demand only</button>
+          <button class="seg" role="radio" aria-checked="false">Manual</button>
         </div>
       </div>
       <div class="row">
@@ -876,7 +881,9 @@
            ============================================================ -->
       <h3>Hotkeys</h3>
       <div class="section-hint">
-        Click any shortcut to re-record. Esc cancels. Reset restores the default.
+        Picker, Rename, and Sync Now act on the <strong>cursor display</strong>
+        — the display under your mouse when you press the shortcut. Click
+        any kbd cell to re-record. Esc cancels.
       </div>
       <div class="inset">
         <div class="hotkey-row">
@@ -914,7 +921,7 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Open settings</div>
-            <div class="sublabel">Open this pane. ⌘, mirrors the macOS Preferences convention.</div>
+            <div class="sublabel">Open this pane. ⌘, matches the macOS Preferences convention.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ ,</span>
           <a class="kbd-reset" title="Restore default">Reset</a>
@@ -940,9 +947,9 @@
     <h4>Two layers of "on"</h4>
     <strong>Enable SpacesSync</strong> is the master switch — governs
     rename, picker, popups, hotkeys, and sync. <strong>Sync mode</strong>
-    is independent: <em>Automatic</em> mirrors Space switches live,
-    <em>On demand only</em> leaves displays free and uses <em>Sync Now</em>
-    to switch them together.
+    is independent: <em>Automatic</em> syncs Space switches live,
+    <em>Manual</em> leaves displays free and uses <em>Sync Now</em>
+    to bring them together.
 
     <h4>Autosave, no Apply</h4>
     Every change live-commits to <code>SpacesSync.json</code>, matching

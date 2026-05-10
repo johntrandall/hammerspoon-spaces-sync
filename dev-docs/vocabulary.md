@@ -23,7 +23,8 @@ Some concepts have both a user-facing and internal name (e.g. "Workspace" vs `wo
 | Switch delay     | `switchDelay` | — |
 | Debounce         | `debounceSeconds` | — |
 | Status HUD       | status HUD | — |
-| Sync mode        | `syncMode` (`automatic` \| `on-demand`) | — |
+| Sync mode        | `syncMode` (`automatic` \| `manual`) | — |
+| Sync (verb)      | sync, `syncTarget`, `syncNext` | — |
 | Sync now         | `:syncNow()` | — |
 | (use "the cursor display's group") | trigger (display) | ✗ user-facing |
 | (use "the rest of the group") | target / sibling (display) | ✗ user-facing |
@@ -53,7 +54,7 @@ This is the user-facing equivalent of the engine-internal "trigger display": whe
 ### Current Space
 The Space currently visible on a given display — the one the user sees when they look at it. The same as `hs.spaces.activeSpaceOnScreen(display)`. Used in user-facing copy when we need to disambiguate from "all Spaces on the display."
 
-**Use "current," never "active."** "Active" introduces a parallel axis that overlaps with "cursor display" and creates two ways to say one thing. The pair *cursor display* × *current Space* covers every reference: which display, which Space on it.
+**Use "current," never "active."** "Active" introduces a parallel axis that overlaps with "cursor display" and creates two ways to say one thing. The pair *cursor display* × *current Space* covers every **user-invoked action**: which display, which Space on it. Watcher-detected events (the engine reacting to a Space switch) have a different subject — see the internal "trigger display" entry — but those events have no user-facing copy attached.
 
 ### Sync group
 A group of displays that share Space indices. When any display in a sync group switches Spaces (in Automatic sync mode), SpacesSync moves the others to match. This is the core abstraction the Spoon provides.
@@ -63,10 +64,10 @@ A group of displays that share Space indices. When any display in a sync group s
 
 Displays not in any sync group are **independent** — SpacesSync never moves them.
 
-### Display set
-A physical arrangement of displays. Think "my home desk" vs "my office desk" — different hardware, different number of monitors, different layouts. A display set is a *configuration of hardware*, not a SpacesSync concept. SpacesSync doesn't directly model display sets, but the user-facing concept matters because the same `syncGroups` config may make sense on one display set and not another.
+### Display set ＊roadmap, not in v1＊
+A physical arrangement of displays. Think "my home desk" vs "my office desk" — different hardware, different number of monitors, different layouts. **The current Spoon does not model display sets.** This entry exists to reserve the term for a future feature where the user could keep multiple `groupOf` configurations and switch between them when their hardware setup changes. Do not surface "display set" in any user-facing copy until that feature exists — using the term now misleads users into expecting profile switching.
 
-**Example:** "On my home display set I have 4 LG monitors. On my office display set I have a laptop and one external."
+**Example (future):** "On my home display set I have 4 LG displays. On my office display set I have a laptop and one external."
 
 ### Space
 macOS's native concept of a virtual desktop — what you switch between with Mission Control or ⌃→/⌃←. Each display has its own independent list of Spaces.
@@ -100,6 +101,9 @@ The two-value setting that gates the watcher: **Automatic** (SpacesSync mirrors 
 
 ### Sync now
 The user-invoked action that switches the cursor display's group to the cursor display's current Space. Hotkey ⌃⌥⌘S by default. Scope is the cursor display's group only — other groups stay where they are.
+
+### Sync (verb)
+Canonical verb for "propagate one display's Space change to the rest of its group." Use as both verb (`SpacesSync syncs every Space switch to the rest of its group`) and noun (`a sync started by the watcher`). **Avoid** "mirror" (implies bidirectional reflection — sync is one-way), "align" (implies coordinate-matching — too geometric), "propagate" (technical jargon), "follow" (ambiguous about who follows whom). The corresponding internal narrative term is "sync chain" (the full sequence: detect → compute targets → chained gotoSpace → debounce).
 
 ### Enable SpacesSync (master switch)
 The single boolean that governs whether SpacesSync does anything at all. When off: hotkeys, popups, picker, status HUD, and sync are all dormant.
@@ -174,7 +178,10 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 | Space ID (in cross-display comparisons) | Space index | IDs aren't comparable across displays. |
 | `pos N` (abbreviation) | `position N` | Don't abbreviate user-facing labels. |
 | "Across each group" (when describing mirroring) | "to the rest of its sync group" | "Across each" reads as sweeping multiple groups. Mirroring is per-group: one Space switch propagates within one group. |
-| "Align" / "re-align" | "Switch" | Users switch Spaces; that's the verb. "Align" implies coordinate-matching. |
+| "Align" / "re-align" (the propagation action) | "Sync" | Users switch Spaces; SpacesSync syncs across a group. "Align" implies coordinate-matching. |
+| "Mirror" (the propagation action) | "Sync" | "Mirror" implies bidirectional reflection. Sync is one-way: trigger display first, group follows. |
+| "Propagate" / "follow" (in user copy) | "Sync" | Engineering jargon and ambiguous direction; "sync" reads naturally to end users. |
+| "On demand only" / "On-demand sync" (Sync mode label) | "Manual" | The standard pairing is Automatic / Manual. "On demand only" reads as a feature restriction. |
 
 ---
 
