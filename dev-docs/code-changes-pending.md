@@ -27,9 +27,9 @@ See `dev-docs/diagrams/workflow-roadmap.mermaid` for the v3 design diagram.
 Resolved by `dev-docs/findings/F-010-polling-model-a-vs-b.md`. Empirical result: **Model B holds** — `activeSpaceOnScreen` flips at end of MC animation; polling alone is a sufficient ready signal. 0 drops in 160 trials at gap=0. `MIN_DISPATCH_GAP = 0` (removed from design); `pollTimeout = 2.0 s` (revised up from 1.0 s).
 
 F-010 also surfaced these out-of-scope items now filed as follow-ups (not blocking v3):
-- macOS 16 (Tahoe) — re-run F-010 when porting
-- Reduce Motion ON regime — re-run E1; if flip drops below ~200 ms, re-run E2
-- Heavy CPU/GPU load regime — re-measure pollTimeout headroom under stress
+- macOS 16 (Tahoe) — re-run F-010 when porting (see F-010 §7.1)
+- Reduce Motion ON regime (see F-010 §7.3 for re-run protocol)
+- Heavy CPU/GPU load regime (see F-010 §7.2)
 
 ### P2. Watcher single-exit refactor
 
@@ -134,7 +134,7 @@ For each target i:
 Adversarial round 4 surfaced this: without step 0, the chain dispatches no-op `gotoSpace(currentSpaceID)` calls in both cases. Behavior is technically correct but spammy. Step 0 makes the no-op explicit.
 
 **New config knobs:**
-- `obj.pollTimeout = 2.0` (seconds). Replaces fixed `switchDelay`. F-010 §6.1 calibration: ≈ 2.5× idle worst case (897 ms) for slow-settle headroom.
+- `obj.pollTimeout = 2.0` (seconds). Replaces fixed `switchDelay`. **See F-010 §6.1** for calibration rationale.
 - `obj.pollInterval = 0.030` (seconds). Polling cadence.
 
 **Old knobs (deprecated, not removed):** `obj.switchDelay` and `obj.debounceSeconds`. Implementation-feasibility review flagged these as part of the public API at lines 99-113 of init.lua. Keep them with deprecation warnings for one release; ignore values silently. Removing in next major version.
@@ -151,9 +151,9 @@ Adversarial round 4 surfaced this: without step 0, the chain dispatches no-op `g
 
 **Shape:** After the per-target poll-verify (step 3 of item 1), read `activeSpaceOnScreen(target)` one more time and write it into `state.lastActiveSpaces[targetUUID]`. Subsequent watcher fires from our own `gotoSpace` see `currentSpaces[targetUUID] == lastActiveSpaces[targetUUID]` and exit via NO_CHANGE — no debounce window needed.
 
-**Knob deprecated:** `obj.debounceSeconds`. Per implementation-feasibility review (item 1), keep the symbol parseable for one release cycle; ignore values silently. Removing in next major version.
+**Knob deprecated:** `obj.debounceSeconds`. Same lifecycle as item 1 — keep parseable for one release, no-op the value.
 
-**Why observed value, not expected:** see F-010 §6.2 for the full empirical rationale. One-sentence summary: post-poll observed values cost no additional reads (we already poll), they equal the expected value on success, and on poll-timeout they capture macOS's actual stuck state — making `lastActiveSpaces` always match reality. Pre-dispatch expected-value writes would silently poison the baseline if a dispatch were dropped.
+**Why observed value, not expected:** see F-010 §6.2 (canonical rationale). Briefly: zero extra reads, and on timeout the baseline matches reality instead of optimism.
 
 **Sequencing note:** during the polling window itself, `state.lastActiveSpaces[target]` still reflects the PRE-dispatch state, not the in-flight expectation. The `syncInProgress` gate suppresses watcher fires during the window so the (briefly stale) diff doesn't trigger anything. Once polling completes, the observed-value write makes the baseline current. The gate clears immediately after the end-of-chain verifier (no debounce padding).
 
@@ -292,7 +292,16 @@ The earlier draft branched at check time on whether each display was a sync-grou
 if not state.enabled or myGen ~= state.chainGeneration then return end
 ```
 
-**`:stop()` must also restore baseline truth.** A chain bailed mid-stream leaves `state.lastActiveSpaces` half-written (some targets have post-poll observed values; others still have pre-chain values). After bumping `chainGeneration` and stopping timers, `:stop()` should also do `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}`. Same fix in BAIL_CHAIN (diagram). Without it, the next watcher fire after `:start()` (or after another bail-and-recover) diffs against a Frankenstein baseline.
+**`:stop()` must also restore baseline truth, in this order:**
+
+1. Bump `chainGeneration` (so any captured closure bails on next tick).
+2. Stop chain-owned timers (`chainTimers`).
+3. Refresh `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}`.
+4. Set `state.enabled = false` LAST.
+
+Keeping `state.enabled = false` until step 4 ensures the watcher's `enabled?` gate stays "yes" while we're restoring the baseline, so any spaces-watcher fire that arrives mid-restore is suppressed by the existing guards rather than leaking through with a Frankenstein baseline. Same ordering applies to BAIL_CHAIN's `syncInProgress = false`.
+
+Without this, the next watcher fire after `:start()` (or after another bail-and-recover) diffs against a half-written baseline.
 
 ### 7. ⚠ Watchdog timer for stuck `syncInProgress` [B4]
 
@@ -306,7 +315,15 @@ if not state.enabled or myGen ~= state.chainGeneration then return end
 
 **Note on dependency:** the formula references `obj.pollTimeout` and `state.chainTimers` introduced in item 1 (stage 3). If this item ships in stage 2 (per the build order) before item 1 lands, hard-code `8 s` and a single `state.watchdogTimer` field; refactor when item 1 lands.
 
-**Action on fire (when generation matches):** force-clear `syncInProgress = false`, refresh `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}` (so the next watcher fire diffs against truth — see also item 6/BAIL fix), log at error level: `"Sync watchdog fired — flag was stuck"`. Cheap insurance against unhandled errors anywhere in the chain.
+**Action on fire (when generation matches), in order:**
+
+1. Bump `state.chainGeneration` (so any closure still queued in `chainTimers` bails on next tick — consistent with item 0a's "bumped at chain start, BAIL_CHAIN, watchdog fire, `:stop()`").
+2. Stop any remaining `chainTimers` (defensive — they should already be drained, but cheap to be sure).
+3. Refresh `state.lastActiveSpaces = hs.spaces.activeSpaces() or {}` (so the next watcher fire diffs against truth — see item 6 / BAIL_CHAIN fix).
+4. Set `state.syncInProgress = false` LAST (same ordering rationale as BAIL_CHAIN).
+5. Log at error level: `"Sync watchdog fired — flag was stuck after Ns; chain abandoned"`.
+
+Cheap insurance against unhandled errors anywhere in the chain.
 
 ### 8. ⚠ `:start()` snapshot/setup-watcher race [B1]
 
