@@ -62,11 +62,10 @@ flowchart TD
     %% --- v3 NEW: fire-and-verify replaces fire-and-wait ---
     EAGER_WRITE["<b>Eager-write target's baseline.</b> <i>(new in v3)</i><br/>Set lastActiveSpaces[targetUUID] = expectedState[targetUUID]<br/>BEFORE dispatching gotoSpace. (We already computed the<br/>expected end state at chain start; this just lifts the<br/>relevant entry into the live baseline.) The watcher fire<br/>that confirms our dispatch then diffs to no-change<br/>and exits via NO_CHANGE — no debounce window needed."]:::new
     DISPATCH["<b>Dispatch hs.spaces.gotoSpace.</b><br/>Compute the target Space ID at the trigger's index<br/>on this target display, then call gotoSpace.<br/>macOS animates the Space switch on the target."]:::spoon
-    POLL["<b>Poll for verification.</b> <i>(replaces switchDelay in v3)</i><br/>Every ~30 ms, re-read hs.spaces.activeSpaceOnScreen(target).<br/>Continue when it matches the expected Space ID,<br/>OR pollTimeout (~1 s) elapses — whichever comes first.<br/>Each poll iteration also re-checks state.enabled and<br/>chainGeneration; bails if either changed."]:::new
+    POLL["<b>Poll for verification.</b> <i>(replaces switchDelay in v3)</i><br/>Every ~30 ms, re-read hs.spaces.activeSpaceOnScreen(target).<br/>Continue when it matches the expected Space ID,<br/>OR pollTimeout (~2 s) elapses — whichever comes first.<br/>Each poll iteration also re-checks state.enabled and<br/>chainGeneration; bails if either changed.<br/><br/>Calibrated via F-010 polling spike: Model B holds —<br/>activeSpaceOnScreen flips at end of MC animation,<br/>so polling alone is a sufficient ready signal.<br/>Mean flip latency 753 ms; pollTimeout 2 s covers slow settle."]:::new
     VERIFY{"<b>Did the target reach the expected Space?</b><br/>If yes — verified, move on.<br/>If no (poll timeout) — macOS dropped the dispatch<br/>or settle was unexpectedly slow."}:::decision
     DROPPED_LOG["<b>Log dispatch drop.</b><br/>Warning level: 'target X: gotoSpace did not land<br/>within pollTimeout.' Don't block the chain —<br/>continue to the next target. User will see the<br/>drift and re-swipe; that's the recovery path."]:::new
-    MIN_GAP["<b>Wait MIN_DISPATCH_GAP (~150 ms).</b> <i>(council mitigation, new in v3)</i><br/>activeSpaceOnScreen flips when macOS commits the Space,<br/>which can be BEFORE Mission Control's accessibility tree<br/>is ready for the next gotoSpace dispatch (Model A).<br/>This floor covers MC's UI teardown so the next dispatch<br/>isn't silently dropped. Calibrate via the polling spike."]:::new
-    MORE{"<b>More targets?</b><br/>Any target displays remaining in the sync group?"}:::decision
+    MORE{"<b>More targets?</b><br/>Any target displays remaining in the sync group?<br/><br/>Note: no MIN_DISPATCH_GAP needed (F-010 confirmed<br/>Model B — polling alone is sufficient ready signal)."}:::decision
 
     VERIFY_END_STATE["<b>Verify world matches expected end state.</b> <i>(scoped to sync-group path)</i><br/>Read actual = hs.spaces.activeSpaces.<br/>Diff against expectedEndState (computed at chain start).<br/><br/>Mismatches indicate something the chain didn't catch:<br/>• Target verified but later drifted (user override mid-chain)<br/>• Trigger itself moved mid-chain (gate dropped that signal)<br/>• Display reconfig race the screen-watcher didn't catch in time<br/>• Per-target verify false positive<br/><br/>Log per mismatch. Refresh state.lastActiveSpaces = actual<br/>so the NEXT watcher fire diffs against truth.<br/><br/>Council scope decision: runs ONLY on the sync-group path.<br/>NO_CHANGE just confirmed nothing changed; independent path<br/>didn't dispatch anything; reconfig path already rebuilt<br/>state from scratch. Verifying on those is busywork.<br/>Runs BEFORE CLEAR so the gate stays closed during verify."]:::new
 
@@ -115,9 +114,8 @@ flowchart TD
 
     GROUP -- no --> INDEPENDENT --> POPUP
     GROUP -- yes --> LOCK --> COMPUTE_EXPECTED --> SYNCNEXT --> EAGER_WRITE --> DISPATCH --> POLL --> VERIFY
-    VERIFY -- yes --> MIN_GAP
-    VERIFY -- "no — timeout" --> DROPPED_LOG --> MIN_GAP
-    MIN_GAP --> MORE
+    VERIFY -- yes --> MORE
+    VERIFY -- "no — timeout" --> DROPPED_LOG --> MORE
     MORE -- yes --> SYNCNEXT
     MORE -- no --> POPUP
 
