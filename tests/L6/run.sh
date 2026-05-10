@@ -19,9 +19,23 @@
 # Each test module exposes:
 #   M.probe()    — read state, find trigger/target pair, stash plan
 #   M.arm()      — dispatch the trigger swipe
-#   M.assert_()  — read result, restore Spaces
+#   M.disrupt()  — OPTIONAL; called between two sleeps to disturb the
+#                  in-flight chain (e.g., scenario-08 calls :stop() mid-
+#                  chain). Detected by grepping `function M.disrupt` in
+#                  the test file.
+#   M.assert_()  — read result, restore Spaces (and restart Spoon if
+#                  the scenario stopped it)
+#
+# Phase shape per test:
+#   * Without M.disrupt: probe / arm / sleep(SLEEP_BETWEEN) / assert_
+#   * With M.disrupt:    probe / arm / sleep(MID_SLEEP) / disrupt /
+#                        sleep(SLEEP_BETWEEN) / assert_
 #
 # Each phase is a separate `hs -c` call (runloop-blocking constraint).
+#
+# Between scenarios the runner sleeps SETTLE_BETWEEN_TESTS seconds so
+# the prior scenario's restore chain (or :start() warm-up) can settle
+# before the next probe runs.
 
 set -uo pipefail
 
@@ -47,7 +61,19 @@ fi
 
 # SLEEP_BETWEEN = max(8, 3 * pollTimeout + 2). Use awk for floating math.
 SLEEP_BETWEEN=$(awk -v pt="$POLL_TIMEOUT" 'BEGIN { v = 3 * pt + 2; if (v < 8) v = 8; printf "%g\n", v }')
-echo "L6 setup: pollTimeout=$POLL_TIMEOUT, SLEEP_BETWEEN=${SLEEP_BETWEEN}s (max(8, 3*pollTimeout+2))"
+
+# MID_SLEEP: only used by tests that define M.disrupt. Long enough for
+# the watcher to fire and the chain to enter its first poll cycle at
+# default pollTimeout=2.0 (poll interval ~0.25s); short enough to land
+# the disrupt while syncInProgress is still true.
+MID_SLEEP=1.0
+
+# SETTLE_BETWEEN_TESTS: pause between scenarios so a prior restore /
+# :start() warm-up can settle before the next probe checks
+# syncInProgress.
+SETTLE_BETWEEN_TESTS=3
+
+echo "L6 setup: pollTimeout=$POLL_TIMEOUT, SLEEP_BETWEEN=${SLEEP_BETWEEN}s (max(8, 3*pollTimeout+2)), MID_SLEEP=${MID_SLEEP}s, SETTLE_BETWEEN_TESTS=${SETTLE_BETWEEN_TESTS}s"
 
 # Helper: invoke one phase via `hs -c -q`, return its tail-line result.
 run_phase() {
@@ -65,9 +91,25 @@ if [[ ${#TESTS[@]} -eq 0 ]]; then
 fi
 
 ANY_FAIL=0
+FIRST_TEST=1
 for tf in "${TESTS[@]}"; do
   name="$(basename "$tf" .lua)"
+
+  # Inter-test settle: let a prior scenario's restore / restart finish
+  # before this scenario's probe reads :status().
+  if [[ $FIRST_TEST -eq 0 ]]; then
+    sleep "$SETTLE_BETWEEN_TESTS"
+  fi
+  FIRST_TEST=0
+
   echo "── $name"
+
+  # Detect optional disrupt phase by inspecting the test file. Cheap
+  # and avoids an extra `hs -c` round-trip.
+  HAS_DISRUPT=0
+  if grep -q '^function M.disrupt' "$tf"; then
+    HAS_DISRUPT=1
+  fi
 
   # PHASE 1: probe
   probe_out=$(run_phase "$tf" "probe")
@@ -99,13 +141,35 @@ for tf in "${TESTS[@]}"; do
       ;;
   esac
 
+  if [[ $HAS_DISRUPT -eq 1 ]]; then
+    # PHASE 2.5a: short sleep to land mid-chain.
+    echo "  mid-sleep: ${MID_SLEEP}s (letting chain enter flight)"
+    sleep "$MID_SLEEP"
+
+    # PHASE 2.5b: disrupt — synchronous state perturbation
+    # (e.g. :stop() the Spoon).
+    disrupt_out=$(run_phase "$tf" "disrupt")
+    case "$disrupt_out" in
+      "L6 DISRUPT OK"*)
+        echo "  disrupt: $disrupt_out"
+        ;;
+      *)
+        echo "  disrupt FAIL: $disrupt_out"
+        ANY_FAIL=1
+        continue
+        ;;
+    esac
+  fi
+
   # PHASE 3: shell-sleep so the runloop pumps the watcher / chain /
-  # verifier. Must precede assert.
+  # verifier. Must precede assert. For disrupt-style tests this is the
+  # window in which stale callbacks must fire AND bail.
   echo "  sleep: ${SLEEP_BETWEEN}s (waiting for chain to settle)"
   sleep "$SLEEP_BETWEEN"
 
-  # PHASE 4: assert — read result, restore Spaces. CRITICAL: the
-  # assert phase reads lastVerifierResult BEFORE dispatching restore.
+  # PHASE 4: assert — read result, restore Spaces (and restart Spoon
+  # if the scenario stopped it). CRITICAL: the assert phase reads
+  # lastVerifierResult BEFORE dispatching restore.
   assert_out=$(run_phase "$tf" "assert_")
   case "$assert_out" in
     "L6 PASS"*)

@@ -28,7 +28,7 @@ under the layout described below. Current coverage:
 | L0    | green  | 3 guards (syntax, docs.json, version-sync) |
 | L1    | green  | 35 unit tests across 5 helpers |
 | L3    | green  | 1 contract test (12-key `:status()` shape) |
-| L6    | green  | scenario-01-single-swipe (1 of 30 manual checklist scenarios automated) |
+| L6    | green  | scenario-01-single-swipe + scenario-08-mid-chain-stop (2 of 30 manual checklist scenarios automated) |
 
 Run `tests/run.sh` for the default safe set (L0 + L3),
 `tests/run.sh L3_inclusive` for the pre-commit equivalent (L0 + L1 +
@@ -41,7 +41,7 @@ of the loaded init.lua, with no source modifications). L1 is now
 "green" rather than "Not yet"; the activation trigger described in
 J1 below is no longer load-bearing.
 
-L6 has 1 of 30 manual-checklist scenarios automated; the rest of the
+L6 has 2 of 30 manual-checklist scenarios automated; the rest of the
 checklist remains the parent set, with automated coverage growing one
 scenario at a time.
 
