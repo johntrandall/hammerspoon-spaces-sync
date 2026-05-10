@@ -30,7 +30,7 @@ flowchart TB
         end
     end
 
-    JSON[("SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊canonical config＊<br/>enabled, syncMode, groupOf,<br/>groupLabels, spaceNames,<br/>_lastSeen — name, uuid, date, wasIn<br/>switchDelay, debounceSeconds,<br/>popupDuration, statusDuration,<br/>hotkeys")]:::config
+    JSON[("SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊canonical config＊<br/>schemaVersion,<br/>enabled, syncMode, groupOf,<br/>groupLabels, spaceNames,<br/>_lastSeen — name, uuid, date, wasIn<br/>switchDelay, debounceSeconds,<br/>popupDuration, statusDuration,<br/>hotkeys")]:::config
     Plist[(hs.settings plist<br/><br/>＊legacy＊<br/>pre-v3 Space names<br/>read once on first run,<br/>migrated into JSON spaceNames,<br/>then ignored)]:::store
     HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen hs.screen.watcher<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json<br/>hs.shutdownCallback]:::external
 
@@ -59,7 +59,7 @@ flowchart TB
     GroupLook --> PosMap
     SyncEng --> UI
     Names --> UI
-    Names -->|read by| ConfigMod
+    Names <-->|hydrate on load<br/>read on save| ConfigMod
     ConfigMod -->|spaceNames live in JSON now,<br/>Plist is migration-source only| JSON
 
     Engine --> HSAPIs

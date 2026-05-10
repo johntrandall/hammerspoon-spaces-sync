@@ -378,7 +378,7 @@
   }
   .label-row input.label-input {
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 5px;
     color: var(--text-primary);
     padding: 4px 8px;
@@ -785,7 +785,7 @@
           <input class="label-input" type="text" value="" placeholder="Group B (default)">
           <span class="member-count">1 display</span>
         </div>
-        <div class="label-row dim">
+        <div class="label-row">
           <span class="letter"><span class="chip c"></span>C</span>
           <input class="label-input" type="text" value="Reference" placeholder="Group C (default)">
           <span class="member-count">— empty</span>
@@ -845,7 +845,7 @@
           <div class="display-name">LG SDQHD #4</div>
           <div class="group-select" style="border-color: var(--accent-blue); background: rgba(10,132,255,0.08);">
             <span class="chip b"></span><span>Group B</span>
-            <span class="caret" style="color: var(--accent-blue)">▾</span>
+            <span class="caret" style="color: var(--accent-blue)">▴</span>
           </div>
           <div class="menu menu-upward" role="menu">
             <div class="menu-item">
@@ -863,21 +863,10 @@
               <span class="chip b"></span>
               <span>Group B <span class="members">— position 4</span></span>
             </div>
-            <div class="menu-divider"></div>
-            <div class="menu-item">
-              <span class="checkmark"></span>
-              <span class="chip c"></span>
-              <span>C: Reference <span class="members">— empty</span></span>
-            </div>
-            <div class="menu-item">
-              <span class="checkmark"></span>
-              <span class="chip d"></span>
-              <span>Group D <span class="members">— empty</span></span>
-            </div>
-            <div class="menu-item" style="color: var(--text-tertiary)">
+            <div class="menu-item" style="color: var(--text-tertiary); font-style: italic">
               <span class="checkmark"></span>
               <span class="chip none"></span>
-              <span>Groups E – J <span class="members">— empty</span></span>
+              <span>Groups C – J <span class="members">— available</span></span>
             </div>
           </div>
         </div>
@@ -895,9 +884,8 @@
         </div>
       </div>
       <div class="footnote" style="margin-top: 10px;">
-        Ten groups (A–J) always exist. Assign a position to use a group;
-        leaving a group empty removes its members but keeps the slot
-        available. Set an optional label in the Group Labels section above.
+        Set an optional label in the Group Labels section above to
+        override the default "Group A" / "Group B" name.
       </div>
 
       <!-- ============================================================
@@ -924,7 +912,7 @@
         <div>
           <div class="label">Sync Now</div>
           <div class="sublabel">
-            One-shot: switch the cursor display's group to its current
+            One-shot: switch the cursor display's group to the cursor display's current
             Space. The cursor display defines the action — same
             convention as <em>Open Space picker</em> and
             <em>Rename current Space</em>. Works in either Sync mode.
@@ -976,9 +964,10 @@
             <span class="info-tip__popover" role="tooltip">
               How long the <em>Space-names popup</em> stays visible — the
               panel listing every Space on a display with its index and
-              name (e.g. "1: Notes, 2: Music"). Shown after a sync, after
-              independent-display switches, and via the picker hotkey.
-              Default: 2s.
+              name (e.g. "1: Notes, 2: Music"). Shown briefly after a sync
+              and after independent-display switches. Governs only this
+              auto-dismiss popup; the interactive Space picker
+              (⌃⌥⌘N) has its own dwell. Default: 2s.
             </span>
           </button>
         </span>
@@ -1038,7 +1027,7 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Sync Now</div>
-            <div class="sublabel">Switch the cursor display's group to its current Space.</div>
+            <div class="sublabel">Switch the cursor display's group to the cursor display's current Space.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
           <a class="kbd-reset" title="Restore default">Reset</a>
@@ -1059,9 +1048,8 @@
       </div>
     </div>
 
-    <!-- Footer: just Done. Every change is autosaved live to JSON
-         (matching System Settings.app since Ventura) and converges with
-         the pathwatcher hot-reload — there's nothing to "Apply". -->
+    <!-- Footer: just Done. See "Two surfaces, one path" callout
+         for the autosave + pathwatcher convergence rationale. -->
     <div class="footer">
       <button class="btn apply">Done</button>
     </div>
@@ -1078,25 +1066,18 @@
 
 <h4>Why two display sections?</h4>
     "Detected Displays" answers <em>what's plugged in right now</em> — pure
-    reference, regenerated on open. "Sync Groups" is the editable
+    reference, regenerated on open. "Group Membership" is the editable
     assignment. UUID lives in the inventory only, where it disambiguates
     identical models.
 
     <h4>Fixed pool of 10 groups</h4>
-    Groups aren't created or destroyed. The pool of 10 letters (A
-    through J) always exists; users just decide which to populate.
-    Empty groups remain in the pool and can hold a label even with
-    no members. This sidesteps a class of lifecycle bugs (no "next
-    unused letter," no retirement state, no dissolution events) —
-    more than enough for any current Mac with comfortable buffer.
+    All ten letters A–J always exist; users just decide which to
+    populate. No creation/deletion lifecycle.
+    See <code>vocabulary.md</code> "Sync group → Why 10" for rationale.
 
     <h4>Letter is identity, label is display</h4>
-    The letter (A, B, C …) is the stable internal ID — it appears
-    in <code>groupOf</code>, in <code>spaceNames</code> keys, and
-    everywhere internal code references a group. The label is
-    optional, user-set, and display-only — stored sparsely in
-    <code>groupLabels</code>. Labeled groups render as "A: Code";
-    unlabeled as "Group A".
+    Letter is the stable ID; label is optional display sugar.
+    See <code>vocabulary.md</code> "Sync group" + "Group label".
 
     <h4>The single-group constraint</h4>
     Each row's selector picks <em>one</em> group or <em>None</em>. The data

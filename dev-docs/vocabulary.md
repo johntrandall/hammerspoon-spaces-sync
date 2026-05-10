@@ -27,6 +27,9 @@ Some concepts have both a user-facing and internal name (e.g. "Sync group" vs `g
 | Sync mode        | `syncMode` (`automatic` \| `manual`) | — |
 | Sync (verb)      | sync, `syncTarget`, `syncNext` | — |
 | Sync now         | `:syncNow()` | — |
+| Space picker     | `:showNames()` | — |
+| Space-names popup | popup canvas | — |
+| Open Settings    | `:openSettings()` | — |
 | (use "the cursor display's group") | trigger (display) | ✗ user-facing |
 | (use "the rest of the group") | target / sibling (display) | ✗ user-facing |
 | (use "SpacesSync mirrors…")   | watcher / `hs.spaces.watcher` | ✗ user-facing |
@@ -69,7 +72,13 @@ Displays not in any sync group are **independent** — SpacesSync never moves th
 
 **Why 10:** more than enough for any current Mac with comfortable buffer. Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. The fixed cap eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
 
-**Default name:** every group has a default display name of `"Group <letter>"` — Group A, Group B, Group C, …, Group J. This is the fallback shown anywhere a group is rendered with no user-set label. **Pure UI render; no schema field.** Pseudocode helper: `displayName(letter) = groupLabels[letter] or "Group " .. letter`.
+**Default name:** every group has a default display name of `"Group <letter>"` — Group A, Group B, Group C, …, Group J. This is the fallback shown anywhere a group is rendered with no user-set label. **Pure UI render; no schema field.** Pseudocode helper:
+```
+displayName(letter) =
+    groupLabels[letter] and (letter .. ": " .. groupLabels[letter])
+                         or ("Group " .. letter)
+```
+Returns `"A: Code"` when labeled, `"Group A"` when not.
 
 **Custom label (optional):** each group can have an **optional** user-set label in `groupLabels` — a sparse map containing only entries for labeled groups. When a label exists, the group renders as `"<letter>: <label>"` (e.g. "A: Code"). When absent, it falls back to the default name (e.g. "Group A"). Labels are user-editable in the settings pane's Group Labels section.
 
@@ -117,6 +126,15 @@ The two-value setting that gates the watcher: **Automatic** (SpacesSync syncs ev
 ### Sync now
 The user-invoked action that switches the cursor display's group to the cursor display's current Space. Hotkey ⌃⌥⌘S by default. Scope is the cursor display's group only — other groups stay where they are.
 
+### Space picker
+The interactive overlay that lists the cursor display's Spaces by index and name and lets the user keyboard-navigate to one. Hotkey ⌃⌥⌘N by default. Internally `:showNames()`. Distinct from the **Space-names popup** (auto-dismisses after `popupDuration`); the picker has its own dwell.
+
+### Space-names popup
+The auto-dismissing overlay that briefly lists the cursor display's Spaces by index and name after a sync or after an independent-display switch. Governed by `popupDuration`. Distinct from the **Space picker** (interactive) and the **Status HUD** (single-line on/off banner).
+
+### Open Settings
+The user-invoked action that opens the settings pane. Hotkey ⌃⌥⌘, by default — echoes the macOS ⌘, Preferences convention. Internally `:openSettings()`.
+
 ### Sync (verb)
 Canonical verb for "propagate one display's Space change to the rest of its group." Use as both verb (`SpacesSync syncs every Space switch to the rest of its group`) and noun (`a sync started by the watcher`). **Avoid** "mirror" (implies bidirectional reflection — sync is one-way), "align" (implies coordinate-matching — too geometric), "propagate" (technical jargon), "follow" (ambiguous about who follows whom). The corresponding internal narrative term is "sync chain" (the full sequence: detect → compute targets → chained gotoSpace → debounce).
 
@@ -160,7 +178,16 @@ The runtime list-of-lists derived from `groupOf` — what the sync engine consum
 Engine-internal flags. `syncInProgress` is true during a sync chain; while true, config edits are stashed in `pendingConfig` and drained by the debounce callback (avoids corrupting `lastActiveSpaces` baseline mid-flight).
 
 ### `_lastSeen`
-JSON field. Map from position number to `{ name, uuid, date, wasIn }` for displays that *were* configured at some point but aren't currently connected. `wasIn` is the group letter the position was last assigned to. Used by the settings pane to show stale entries with useful context ("LG SDQHD #5 — last seen 2026-04-12, was in A: Code") rather than anonymous warnings. Written by the screen-watcher on disconnect events; cleared when a position rejoins.
+JSON field. Map from position number to `{ name, uuid, date, wasIn }` for displays that *were* configured at some point but aren't currently connected.
+
+| Subfield | Type | Notes |
+|---|---|---|
+| `name` | string | Display product name as last reported by `screen:name()`. |
+| `uuid` | string | Display UUID from `screen:getUUID()`. Disambiguates identical models across replug. |
+| `date` | string | **ISO 8601 date** (`YYYY-MM-DD`) of last disconnect. Always interpreted as the local-machine date at write time. |
+| `wasIn` | string | Group letter the position was last assigned to. `null` if it was unassigned. |
+
+Used by the settings pane to show stale entries with useful context ("LG SDQHD #5 — last seen 2026-04-12, was in A: Code") rather than anonymous warnings. Written by the screen-watcher on disconnect events; cleared when a position rejoins.
 
 ---
 
