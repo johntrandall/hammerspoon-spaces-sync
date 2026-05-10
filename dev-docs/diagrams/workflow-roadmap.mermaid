@@ -53,7 +53,7 @@ flowchart TD
 
     INDEPENDENT["<b>Independent display — nothing to sync.</b><br/>Trigger is not in any sync group.<br/>We dispatch zero gotoSpace calls on this path,<br/>so there are no echoes to worry about — which is<br/>why we don't need syncInProgress here."]:::spoon
 
-    LOCK["<b>Set syncInProgress = true.</b><br/>From now until the chain's last verify completes,<br/>spaces-watcher fires are dropped. No debounce padding —<br/>the gate clears immediately when polling completes."]:::spoon
+    LOCK["<b>Set syncInProgress = true; bump chainGeneration.</b> <i>(council mitigation)</i><br/>From now until the chain's verifier completes,<br/>spaces-watcher fires are dropped. The chainGeneration<br/>integer is captured by every poll/dispatch closure;<br/>BAIL_CHAIN, :stop, and the watchdog all bump it,<br/>so any in-flight closure can detect 'I was bailed'<br/>and exit before doing further damage."]:::spoon
 
     COMPUTE_EXPECTED["<b>Compute the expected end state.</b> <i>(new in v3)</i><br/>Snapshot hs.spaces.activeSpaces; this is the starting world.<br/>For each target in the sync group, replace its entry with<br/>the Space ID at the trigger's index on that target.<br/><br/>The result is a per-display UUID → Space ID map describing<br/>exactly what we want the world to look like when the chain finishes.<br/>This single map drives both the eager writes during the chain<br/>AND the verification at chain end — one source of truth."]:::new
 
@@ -62,12 +62,13 @@ flowchart TD
     %% --- v3 NEW: fire-and-verify replaces fire-and-wait ---
     EAGER_WRITE["<b>Eager-write target's baseline.</b> <i>(new in v3)</i><br/>Set lastActiveSpaces[targetUUID] = expectedState[targetUUID]<br/>BEFORE dispatching gotoSpace. (We already computed the<br/>expected end state at chain start; this just lifts the<br/>relevant entry into the live baseline.) The watcher fire<br/>that confirms our dispatch then diffs to no-change<br/>and exits via NO_CHANGE — no debounce window needed."]:::new
     DISPATCH["<b>Dispatch hs.spaces.gotoSpace.</b><br/>Compute the target Space ID at the trigger's index<br/>on this target display, then call gotoSpace.<br/>macOS animates the Space switch on the target."]:::spoon
-    POLL["<b>Poll for verification.</b> <i>(replaces switchDelay in v3)</i><br/>Every ~30 ms, re-read hs.spaces.activeSpaceOnScreen(target).<br/>Continue when it matches the expected Space ID,<br/>OR pollTimeout (~1 s) elapses — whichever comes first."]:::new
+    POLL["<b>Poll for verification.</b> <i>(replaces switchDelay in v3)</i><br/>Every ~30 ms, re-read hs.spaces.activeSpaceOnScreen(target).<br/>Continue when it matches the expected Space ID,<br/>OR pollTimeout (~1 s) elapses — whichever comes first.<br/>Each poll iteration also re-checks state.enabled and<br/>chainGeneration; bails if either changed."]:::new
     VERIFY{"<b>Did the target reach the expected Space?</b><br/>If yes — verified, move on.<br/>If no (poll timeout) — macOS dropped the dispatch<br/>or settle was unexpectedly slow."}:::decision
     DROPPED_LOG["<b>Log dispatch drop.</b><br/>Warning level: 'target X: gotoSpace did not land<br/>within pollTimeout.' Don't block the chain —<br/>continue to the next target. User will see the<br/>drift and re-swipe; that's the recovery path."]:::new
+    MIN_GAP["<b>Wait MIN_DISPATCH_GAP (~150 ms).</b> <i>(council mitigation, new in v3)</i><br/>activeSpaceOnScreen flips when macOS commits the Space,<br/>which can be BEFORE Mission Control's accessibility tree<br/>is ready for the next gotoSpace dispatch (Model A).<br/>This floor covers MC's UI teardown so the next dispatch<br/>isn't silently dropped. Calibrate via the polling spike."]:::new
     MORE{"<b>More targets?</b><br/>Any target displays remaining in the sync group?"}:::decision
 
-    VERIFY_END_STATE["<b>Verify world matches our model.</b> <i>(universal final step, new in v3)</i><br/>The watcher's central invariant: lastActiveSpaces matches actual.<br/>We re-arm only when that invariant holds.<br/><br/>Read currentSpaces = hs.spaces.activeSpaces.<br/>Diff against state.lastActiveSpaces (which every path<br/>has just updated to its expected post-state).<br/><br/>For each UUID in lastActiveSpaces:<br/>• currentSpaces[uuid] missing → display vanished<br/>• currentSpaces[uuid] != lastActiveSpaces[uuid] → at wrong Space<br/>For each UUID in currentSpaces not in lastActiveSpaces:<br/>• A display appeared (reconfig race the screen-watcher missed)<br/><br/>Log per mismatch. After logging, refresh<br/>lastActiveSpaces = currentSpaces — restore the invariant<br/>so the NEXT watcher fire diffs against truth.<br/><br/>Runs on EVERY path that ends in DONE: NO_CHANGE,<br/>independent, sync-group, screen-reconfig.<br/>The path-specific work has already updated our model;<br/>this confirms the world matches before we hand control back."]:::new
+    VERIFY_END_STATE["<b>Verify world matches expected end state.</b> <i>(scoped to sync-group path)</i><br/>Read actual = hs.spaces.activeSpaces.<br/>Diff against expectedEndState (computed at chain start).<br/><br/>Mismatches indicate something the chain didn't catch:<br/>• Target verified but later drifted (user override mid-chain)<br/>• Trigger itself moved mid-chain (gate dropped that signal)<br/>• Display reconfig race the screen-watcher didn't catch in time<br/>• Per-target verify false positive<br/><br/>Log per mismatch. Refresh state.lastActiveSpaces = actual<br/>so the NEXT watcher fire diffs against truth.<br/><br/>Council scope decision: runs ONLY on the sync-group path.<br/>NO_CHANGE just confirmed nothing changed; independent path<br/>didn't dispatch anything; reconfig path already rebuilt<br/>state from scratch. Verifying on those is busywork.<br/>Runs BEFORE CLEAR so the gate stays closed during verify."]:::new
 
     POPUP["<b>Show popup on trigger display.</b><br/>The active Space index with names from the<br/>workspace name store. Auto-dismisses after popupDuration."]:::ui
 
@@ -83,12 +84,13 @@ flowchart TD
 
     RECONFIG([<b>Display layout changes.</b><br/>Monitor plugged/unplugged, lid open/close,<br/>dock/undock, displays rearranged in System Settings,<br/>resolution change.]):::user
     SW["<b>Screen watcher fires our callback.</b> <i>(new in v3)</i><br/>hs.screen.watcher invokes our Lua callback.<br/>Distinct from spaces-watcher — this fires on layout change,<br/>not on Space change."]:::macos
+    SW_DEBOUNCE["<b>Coalesce burst.</b> <i>(council fix, new in v3)</i><br/>hs.screen.watcher fires 2-5× per real reconfig event<br/>as macOS settles geometry. Schedule the rebuild via<br/>hs.timer.doAfter(~250 ms); cancel and re-arm on<br/>subsequent fires within the window. One rebuild per<br/>real reconfig instead of one per fire."]:::new
 
     RECONFIG_GATE_ENABLED{"<b>Is SpacesSync enabled?</b><br/>If not, return — same logic as the swipe path."}:::decision
     RECONFIG_SKIP[/"<b>Return — SpacesSync is off.</b>"/]:::terminal
 
     RECONFIG_BAIL_GATE{"<b>Was a sync chain in flight?</b><br/>If yes, its targets may have just disappeared<br/>or shifted positions — we need to abort cleanly."}:::decision
-    BAIL_CHAIN["<b>Abort the in-flight chain.</b><br/>Set syncInProgress = false.<br/>Stop pendingSyncTimer.<br/>Log at info: 'Reconfig during chain — aborting.'"]:::new
+    BAIL_CHAIN["<b>Abort the in-flight chain.</b><br/>Bump chainGeneration so any captured closure bails on next tick.<br/>Set syncInProgress = false.<br/>Stop ALL chain-owned timers (pollTimer + pendingSyncTimer +<br/>watchdog). Track them in a single chainTimers list so this<br/>is one cleanup call, not per-timer.<br/>Log at info: 'Reconfig during chain — aborting.'"]:::new
 
     REBUILD_MAP["<b>Rebuild position map.</b><br/>Re-read hs.screen.allScreens, sort by frame x then y,<br/>reassign position numbers in reading order.<br/>Update positionToUUID, uuidToPosition, totalScreens."]:::new
 
@@ -108,30 +110,30 @@ flowchart TD
 
     GATE_RUNNING -- "yes — chain polling" --> DROP
     GATE_RUNNING -- "no — idle" --> DIFF --> FIND
-    FIND -- no --> NO_CHANGE --> VERIFY_END_STATE
+    FIND -- no --> NO_CHANGE --> DONE
     FIND -- yes --> LOOKUP --> GROUP
 
     GROUP -- no --> INDEPENDENT --> POPUP
     GROUP -- yes --> LOCK --> COMPUTE_EXPECTED --> SYNCNEXT --> EAGER_WRITE --> DISPATCH --> POLL --> VERIFY
-    VERIFY -- yes --> MORE
-    VERIFY -- "no — timeout" --> DROPPED_LOG --> MORE
+    VERIFY -- yes --> MIN_GAP
+    VERIFY -- "no — timeout" --> DROPPED_LOG --> MIN_GAP
+    MIN_GAP --> MORE
     MORE -- yes --> SYNCNEXT
     MORE -- no --> POPUP
 
-    POPUP -- "independent path:<br/>(no gotoSpace dispatched →<br/>no chain to clear)" --> UPDATE_BASELINE --> VERIFY_END_STATE
-    POPUP -- "sync-group path:<br/>(chain finished →<br/>clear the flag)" --> CLEAR --> VERIFY_END_STATE
-    VERIFY_END_STATE --> DONE
+    POPUP -- "independent path:<br/>(no gotoSpace dispatched →<br/>no chain to clear)" --> UPDATE_BASELINE --> DONE
+    POPUP -- "sync-group path:<br/>(chain finished →<br/>verify, then clear)" --> VERIFY_END_STATE --> CLEAR --> DONE
 
     %% ============================================================
     %% EDGES — entry path 2 (reconfig)
     %% ============================================================
 
-    RECONFIG --> SW --> RECONFIG_GATE_ENABLED
+    RECONFIG --> SW --> SW_DEBOUNCE --> RECONFIG_GATE_ENABLED
     RECONFIG_GATE_ENABLED -- no --> RECONFIG_SKIP
     RECONFIG_GATE_ENABLED -- yes --> RECONFIG_BAIL_GATE
     RECONFIG_BAIL_GATE -- yes --> BAIL_CHAIN --> REBUILD_MAP
     RECONFIG_BAIL_GATE -- no --> REBUILD_MAP
-    REBUILD_MAP --> REFRESH_BASELINE --> VALIDATE_CONFIG --> STATUS_HUD --> VERIFY_END_STATE
+    REBUILD_MAP --> REFRESH_BASELINE --> VALIDATE_CONFIG --> STATUS_HUD --> DONE
 
     %% ============================================================
     %% DESIGN INTENT — what v3 changes vs. v0.2

@@ -2,7 +2,7 @@
 
 Running list of code changes for the v3 redesign and the bug fixes that go alongside. **Nothing here is implemented yet.** When we decide to build, this is the inbox to work from.
 
-Last updated: 2026-05-10. Reflects design decisions made after the council review:
+Last updated: 2026-05-10 (after second council review). Reflects design decisions made after BOTH council reviews:
 - **Fire and verify** (per-target polling with timeout) replaces fixed `switchDelay`
 - **Eager `lastActiveSpaces` writes** per target before each dispatch — eliminates `debounceSeconds`
 - **Hard block** on missing Accessibility at `:start`
@@ -20,7 +20,27 @@ See `dev-docs/diagrams/workflow-roadmap.mermaid` for the v3 design diagram.
 
 ---
 
+## ⚠ HARD PREREQUISITES — must land before any v3 code
+
+### P1. Polling spike (calibration, not "decide if")
+
+The OmniFocus task originally framed the spike as "decide if polling is the right approach." After the second council review, that question is answered (yes, polling is right, but with a `MIN_DISPATCH_GAP` floor). Re-scope the spike to **calibrate**:
+
+- Run experiments E1 (when does activeSpaceOnScreen flip vs animation) and E2 (drop-rate vs inter-dispatch gap) from the spike's note.
+- Output: empirical floor for `MIN_DISPATCH_GAP` (the council expects 150-200ms).
+- Without this data, v3 ships a hypothesis. The Hammerspoon-expert review cited project's own findings (F-001/F-002/F-009) as evidence that **Model A is more likely than Model B** — meaning polling alone is unsafe.
+
+### P2. Watcher single-exit refactor
+
+The current watcher callback (`init.lua:961-1057`) has 4 exit paths sprinkled through a 96-line anonymous closure. v3's universal verifier needs them to converge to a single tail. **Pure structural refactor** — no behavior change — but it's the largest single edit and is currently invisible in the diagram. Implementation-feasibility council flagged this as the load-bearing change that the planning doc didn't surface.
+
+### P3. Manual test checklist
+
+Per CLAUDE.md: "No automated tests. Testing requires a multi-monitor Mac." Write `dev-docs/manual-test-checklist.md` covering ~18-22 scenarios (single swipe per group size, mid-chain disable, mid-chain monitor unplug/replug, lid close, Accessibility revoked, etc.) **before the first code change**. Run it against current v0.2 to establish baseline behavior, then re-run after each stage of v3 lands.
+
 ## V3 core changes (one coordinated landing)
+
+**The coordinated bundle.** Items 0+1+2+5+5b cannot be sub-divided per implementation-feasibility review. Eager writes without poll-verify creates phantom states; dropping debounce without eager writes causes echo loops. Ship together or not at all.
 
 ### 0. 🏗 Compute `expectedEndState` at chain start (the load-bearing data structure)
 
@@ -57,25 +77,54 @@ This unification simplifies the implementation, eliminates a class of bugs (comp
 
 ---
 
+### 0a. 🏗 `chainGeneration` token (council mitigation)
+
+**Where:** new `state.chainGeneration` integer; bumped at chain start (LOCK), BAIL_CHAIN, watchdog fire, `:stop()`, and on screen-watcher reconfig.
+
+**Why:** Hammerspoon timer callbacks queue on the main loop and yield between iterations. Without a generation token, a poll-loop closure captured before BAIL_CHAIN can still execute its next tick after the chain has been bailed, dispatching `gotoSpace` against a stale `expectedEndState` or a target that no longer exists.
+
+**Shape:**
+```lua
+-- In state init: state.chainGeneration = 0
+-- At chain start (item 0):
+state.chainGeneration = state.chainGeneration + 1
+local myGen = state.chainGeneration
+-- Every poll-loop and dispatch closure captures myGen
+-- and bails if myGen ~= state.chainGeneration:
+if myGen ~= state.chainGeneration then return end
+```
+
+**Bumped on:** chain start, BAIL_CHAIN, watchdog, `:stop()`. Cheap; eliminates the chain-leaks-past-bail class of races (concurrency review races N3, N4, N7).
+
 ### 1. 🏗 Per-target fire-and-verify chain
 
 **Where:** `Source/SpacesSync.spoon/init.lua` — `syncTarget` (line 903), `syncNext` (line 1023).
 
 **Replaces:** the fixed `switchDelay` wait between dispatches.
 
-**Shape:**
+**Shape (v3 + council mitigations):**
 ```
 For each target i:
-  1. Compute expectedSpaceID = Space at trigger's index on target_i.
-  2. Eager-write: state.lastActiveSpaces[targetUUID] = expectedSpaceID.
-  3. Dispatch hs.spaces.gotoSpace(expectedSpaceID).
-  4. Poll hs.spaces.activeSpaceOnScreen(target) every ~30 ms.
-     Stop when it matches expectedSpaceID OR pollTimeout (~1 s) elapses.
-  5. If matched → continue. If timeout → log warning, continue.
+  1. Eager-write: state.lastActiveSpaces[targetUUID] = expectedEndState[targetUUID].
+     (Computed at chain start in item 0.)
+  2. Dispatch hs.spaces.gotoSpace(expectedEndState[targetUUID]).
+  3. Poll hs.spaces.activeSpaceOnScreen(target) every ~30 ms.
+     Each poll iteration re-checks state.enabled AND chainGeneration; bails if either changed.
+     Stop when activeSpaceOnScreen matches expectedSpaceID OR pollTimeout (~1 s) elapses.
+  4. If matched → continue. If timeout → log warning, continue.
+  5. Wait MIN_DISPATCH_GAP (~150 ms, calibrate via spike) before dispatching the NEXT target.
+     activeSpaceOnScreen flips when macOS commits the Space, but Mission Control's accessibility
+     tree may not be ready for the next gotoSpace yet (Model A). The floor covers MC's UI teardown.
 ```
 
-**New config knob:** `obj.pollTimeout = 1.0` (seconds). Replaces `obj.switchDelay`.
-**Knob removed:** `obj.switchDelay` (and its validation in `:start`).
+**New config knobs:**
+- `obj.pollTimeout = 1.0` (seconds). Replaces fixed `switchDelay`.
+- `obj.minDispatchGap = 0.15` (seconds). New floor between dispatches even when polling green-lights.
+- `obj.pollInterval = 0.030` (seconds). Polling cadence.
+
+**Old knobs (deprecated, not removed):** `obj.switchDelay` and `obj.debounceSeconds`. Implementation-feasibility review flagged these as part of the public API at lines 99-113 of init.lua. Keep them with deprecation warnings for one release; ignore values silently. Removing in next major version.
+
+**Polling cancellation:** all in-flight poll timers must be tracked in `state.chainTimers` (a list, not a single field) so BAIL_CHAIN and `:stop()` can cancel all of them in one call. The current `state.pendingSyncTimer` is a single field — insufficient for v3.
 
 **Why polling instead of fixed wait:** the system is wonky enough that arbitrary waits feel fragile. Polling proceeds when macOS actually settled, not when a clock fires. Worst case (timeout) is roughly the same wait as today; best case is much shorter.
 
@@ -128,18 +177,20 @@ end
 
 **Why safe:** eager writes mean any echoes that arrive after the gate clears diff to no-change and exit cleanly via NO_CHANGE.
 
-### 5b. 🏗 Universal end-of-callback verifier (`verifyAndRefreshBaseline`)
+### 5b. 🏗 End-of-chain verifier (sync-group path only — council scope reduction)
 
-**Where:** new function called as the LAST step on every path that ends in DONE — not just the sync-group chain.
+**Where:** runs at the end of the sync-group chain ONLY, immediately before `CLEAR`. Order: poll-verify each target → end-of-chain verifier → CLEAR (re-arm) → DONE.
 
-**The invariant:** `state.lastActiveSpaces` matches the actual world. The watcher re-arms only when this holds. If it doesn't, we log and refresh the baseline so the *next* watcher fire diffs against truth.
+**The invariant:** `expectedEndState` (computed at chain start) matches actual at chain end. If it doesn't, the chain succeeded for some targets and failed for others; refresh `lastActiveSpaces` from actual so the next watcher fire diffs against truth.
 
-**Runs on every path:**
-- `NO_CHANGE` path (FIND-no)
-- Independent-display path (after `UPDATE_BASELINE`)
-- Sync-group path (after `CLEAR`)
-- Screen-reconfig path (after `STATUS_HUD`)
-- (Disabled / drop paths return early; they don't reach the verifier and don't need to — they didn't update our model.)
+**Council scope reduction:** the original v3 design had this run on every path. Devil's-advocate and Hammerspoon agents both flagged this as unnecessary work:
+- NO_CHANGE just confirmed nothing changed (verifying again is theater)
+- Independent path didn't dispatch anything (no chain to verify)
+- Screen-reconfig path already rebuilt baseline from `activeSpaces()` (verifying current vs current is a no-op)
+
+So: scope to the sync-group path only.
+
+**Order matters.** Concurrency review flagged the original design (CLEAR → VERIFY) as race-unsafe — clearing the gate before verifier reads state lets a new watcher fire interleave with the verify. Reordered to **VERIFY → CLEAR**. Verifier runs while the gate is still closed.
 
 **Shape:**
 ```lua
@@ -276,6 +327,21 @@ These are real but won't ship with v3:
 | Refactor: consolidate baseline writes (D2) | filed — now superseded by item 9 above (rolled into v3 core) |
 
 ---
+
+## Open design question (post second council review)
+
+### Q1. Eager writes: keep with observed-value fix, or drop entirely?
+
+The second council split on this:
+
+- **Devil's-advocate proposed v2.5:** drop eager writes + `expectedEndState` + universal verifier entirely. Keep `syncInProgress` and shrink `debounceSeconds` to 0.2s. Captures ~80% of v3's correctness gains at ~30% of complexity. Defer eager writes until a logged drift event proves they're needed.
+- **Hammerspoon-expert proposed surgical fix:** keep eager writes BUT write the *observed* post-dispatch value (read after poll) instead of the *expected* value (write before dispatch). Eliminates the baseline-poisoning hazard when macOS drops a dispatch. Costs one extra `activeSpaceOnScreen` read per target — already cheap.
+
+The trade-off:
+- v2.5 (drop): simpler model, ~150 LOC instead of ~280-360, fewer interacting invariants. Harder to detect mid-chain drift.
+- Observed-eager-write: keeps v3's ability to absorb echoes naturally via NO_CHANGE, fixes the poisoning hazard, marginal extra LOC.
+
+**Decision deferred** — depends partly on the polling spike (P1) results. If Model A holds strongly, the observed-eager-write approach is more attractive (it's already paying the polling cost; might as well use the post-poll read as the source of truth). If Model B holds, v2.5's debounce-shrink is enough.
 
 ## Decided NOT to do
 
