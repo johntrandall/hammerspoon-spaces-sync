@@ -305,7 +305,18 @@ Contributions welcome! Open an issue or submit a PR.
 Areas where help is especially useful:
 - Testing on other macOS versions and reporting results
 - Testing with non-standard monitor arrangements (vertical stacks, mixed resolutions)
-- Authoring L0/L3/L6 tests against `dev-docs/test-strategy.md` (policy is committed; canonical test code is not yet written)
+- Adding L6 scenarios from `dev-docs/manual-test-checklist.md` to `tests/L6/` — currently only Scenario 1 is automated. See `dev-docs/test-strategy.md` for the policy and `tests/L6/scenario-01-single-swipe.lua` for the three-phase pattern.
+
+### Running the test suite
+
+```bash
+tests/run.sh                              # default: L0 + L3 (safe)
+tests/run.sh L1                           # pure-Lua units, no Hammerspoon needed
+tests/run.sh L3_inclusive                 # L0 + L1 + L3 — pre-commit equivalent
+SPACESSYNC_L6=1 tests/run.sh L6_inclusive # full suite — switches Spaces ~10s
+```
+
+L6 requires `SPACESSYNC_L6=1` because it dispatches real `gotoSpace` calls and switches Spaces on the test host. See `dev-docs/test-strategy.md` § Deviations §5.
 
 ## License
 

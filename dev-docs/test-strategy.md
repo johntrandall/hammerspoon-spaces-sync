@@ -20,23 +20,33 @@ headlessly.
 
 ## Status
 
-**Policy converged; implementation pending.** This document is the
-project's first committed testing-strategy artifact. The test code
-itself (`tests/`) has not yet been authored against this policy (an
-exploratory prototype was created and trashed during policy iteration).
-CLAUDE.md, README.md, and `dev-docs/v3-implementation-handoff.md`
-already point at this strategy doc; once `tests/run.sh` exists, those
-pointers (and the "automated coverage is the empty set" note below)
-get tightened to specific commands.
+**Policy converged; implementation landed.** Tests live in `tests/`
+under the layout described below. Current coverage:
 
-**Recommended implementation order:** L0 (cheapest, headless) → L3
-(public-API contract) → L6 Scenario 1 from `manual-test-checklist.md`
-(the proven happy path). Each is independently shippable. This is the
-canonical statement of order — Active Levels table rows happen to be
-listed in this order as a convenience but are not load-bearing.
+| Level | Status | Tests |
+|-------|--------|-------|
+| L0    | green  | 3 guards (syntax, docs.json, version-sync) |
+| L1    | green  | 35 unit tests across 5 helpers |
+| L3    | green  | 1 contract test (12-key `:status()` shape) |
+| L6    | green  | scenario-01-single-swipe (1 of 30 manual checklist scenarios automated) |
 
-Until then, no automated tests exist yet; verification falls back to
-`dev-docs/manual-test-checklist.md` (30 scenarios).
+Run `tests/run.sh` for the default safe set (L0 + L3),
+`tests/run.sh L3_inclusive` for the pre-commit equivalent (L0 + L1 +
+L3), or `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` for the full
+ladder including the live sync chain.
+
+L1 was added to the active set during implementation (the test author
+proved out the pure-Lua helpers via `debug.getupvalue` introspection
+of the loaded init.lua, with no source modifications). L1 is now
+"green" rather than "Not yet"; the activation trigger described in
+J1 below is no longer load-bearing.
+
+L6 has 1 of 30 manual-checklist scenarios automated; the rest of the
+checklist remains the parent set, with automated coverage growing one
+scenario at a time.
+
+The verification fallback for un-automated scenarios is still
+`dev-docs/manual-test-checklist.md`.
 
 ## Project Context
 
@@ -71,7 +81,7 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 | Level | Status | Rationale | Runner |
 |-------|--------|-----------|--------|
 | **L0** — Guards | ✅ Active | Repo conventions: lua syntax (via [luacheck] or `luac -p`; SKIP if neither on PATH), `docs.json` shape, version sync between `obj.version` and the latest release tag, README link integrity. Headless. Runs on any host without Hammerspoon. | `tests/run.sh L0` |
-| **L1** — Unit | 🔄 Not yet | Most functions touch `hs.*`. Stateless pure-Lua helpers (`compareVersions`, `isLegacyFlatSchema`) are trivially testable via [busted]. Module-state-dependent helpers (`getGroupKey` and `getTargetsFor` read `uuidToPosition` / `obj.syncGroups`; `getDisplayLabel` reads `totalScreens`) need state setup in the unit test. Several other helpers (`nameForIndex` etc.) transitively depend on these. See J1 in Open Questions for the activation trigger. | `tests/run.sh L1` (none yet) |
+| **L1** — Unit | ✅ Active | 35 tests across 5 helpers: stateless (`compareVersions`, `isLegacyFlatSchema`) and module-state-dependent (`getGroupKey`, `getTargetsFor`, `getDisplayLabel`). Implementation uses a minimal plain-Lua harness (per Deviations §1) and `debug.getupvalue` introspection on the loaded init.lua to access local helpers without modifying the source. State-dependent helpers are seeded via `debug.setupvalue` on `positionToUUID` / `uuidToPosition` / `totalScreens` before each fixture. Other helpers (`nameForIndex` etc.) transitively touch `hs.*`; not yet covered. | `tests/run.sh L1` |
 | **L2** — Integration | 🔄 Not yet | Scope is internal wiring within a component. The Spoon is a single file with no internal component boundaries that would benefit from intra-domain integration tests. | (n/a) |
 | **L3** — Contract | ✅ Active | Public API surface is small and stable: `:start`, `:stop`, `:status`, `:isEnabled`, `:toggle`, `:bindHotkeys`, `:showNames`, `:renameCurrentSpace`. Asserts methods exist with correct types and `:status()` returns the spec'd 12-key shape (see L3 Contract Spec below). Does NOT verify chaining (`return self`) — that would require calling stateful methods on the live Spoon. Test ASSUMES Spoon is already `:start()`-ed; SKIPs with an actionable message if not. Does NOT itself call `:start()` or `:stop()`. Runs inside Hammerspoon via `hs -c`; does NOT require multiple displays — single-display hosts get degenerate values (e.g. `positionMap = {[1] = uuid}`) but shape/type checks still pass. | `tests/run.sh L3` |
 | **L4** — Workflow | 🔄 Not yet | Multi-component user stories don't apply to a single-file Spoon. | (n/a) |
@@ -122,32 +132,42 @@ invocation expands the full prefix chain and silently skips inactive
 levels — so `tests/run.sh L2_inclusive` is effectively a no-op beyond
 running L0.
 
-For SpacesSync's three active levels:
+For SpacesSync's four active levels:
 
 | Command | Levels | Notes |
 |---------|--------|-------|
-| `tests/run.sh L3_inclusive` | L0 + L3 | Pre-commit equivalent; Hammerspoon must be running |
-| `tests/run.sh L6_inclusive` | L0 + L3 + L6 | Pre-release equivalent; switches Spaces (see Active Levels L6 row); requires `SPACESSYNC_L6=1` (see Deviations §5) |
+| `tests/run.sh L1_inclusive` | L0 + L1 | Headless; no Hammerspoon needed |
+| `tests/run.sh L3_inclusive` | L0 + L1 + L3 | Pre-commit equivalent; Hammerspoon must be running |
+| `tests/run.sh L6_inclusive` | L0 + L1 + L3 + L6 | Pre-release equivalent; switches Spaces (see Active Levels L6 row); requires `SPACESSYNC_L6=1` (see Deviations §5) |
 | `tests/run.sh` (no arg) | L0 + L3 | Default. "Safe" = no Spaces disruption (still requires HS) |
 
 Bare-level invocations (`tests/run.sh L3`, `tests/run.sh L6`) exist for
 debugging a single level in isolation but are not the recommended path —
 prefer the cumulative form.
 
-## Test Layout (planned)
+## Test Layout
 
-Level-first directory layout, single-domain project:
+Level-first directory layout, single-domain project. Current shape:
 
 ```
 tests/
 ├── run.sh           # dispatcher — cumulative-level orchestrator; checks SPACESSYNC_L6
 ├── L0/              # guards (shell-based, headless)
-│   └── check-*.sh
+│   ├── check-syntax.sh
+│   ├── check-docs-json.sh
+│   ├── check-version-sync.sh
+│   └── run.sh
+├── L1/              # unit tests (plain Lua + minimal harness, no hs runtime)
+│   ├── helpers.lua  # describe/it/eq/tableq/throws etc.
+│   ├── hs_stub.lua  # minimal `hs` shell so init.lua loads
+│   ├── loader.lua   # debug.getupvalue accessors for init.lua locals
+│   ├── *_spec.lua   # one spec per helper
+│   └── run.sh
 ├── L3/              # contract (Lua, runs inside hs via hs -c)
-│   ├── *.lua
+│   ├── contract.lua
 │   └── run.sh
 └── L6/              # E2E live (Lua, runs inside hs + multi-display)
-    ├── *.lua        # automates manual-test-checklist scenarios
+    ├── scenario-*.lua  # automates manual-test-checklist scenarios
     └── run.sh
 ```
 
@@ -170,6 +190,7 @@ arrangements).
 | When | Run |
 |------|-----|
 | Edited a doc / version bump / quick local change | `tests/run.sh L0` |
+| Edited a pure-Lua helper (`compareVersions`, `getGroupKey`, etc.) | `tests/run.sh L1_inclusive` |
 | Edited public API surface (`:start`, `:stop`, `:status`, etc.) | `tests/run.sh L3_inclusive` |
 | Edited the sync chain (`runSyncChain`, `verifyEndState`, polling logic) | `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` (see Deviations §5) |
 | Pre-release | `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` + manual checklist sample |
@@ -178,9 +199,9 @@ arrangements).
 
 This project does not have CI. Gating is currently advisory:
 
-- **Pre-commit** — `tests/run.sh L0`
-- **Pre-merge** — `tests/run.sh L3_inclusive`
-- **Pre-release** — `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` (see Deviations §5 for the env-var gate)
+- **Pre-commit** — `tests/run.sh L1_inclusive` (L0 + L1; headless, fast)
+- **Pre-merge** — `tests/run.sh L3_inclusive` (adds L3 — needs HS running)
+- **Pre-release** — `SPACESSYNC_L6=1 tests/run.sh L6_inclusive` (full ladder; switches Spaces — see Deviations §5 for the env-var gate)
 
 When CI is added (future), `L3_inclusive` is the recommended PR gate.
 `L6_inclusive` requires a multi-display test host and would need a
@@ -351,12 +372,13 @@ leaves the displays wherever the chain dropped them.
 
 ## Open Questions
 
-**J1: When to activate L1.** Currently "Not yet" per Active Levels
-table. **Trigger to revisit:** any regression discovered (whether
-shipped or caught pre-merge) in any pure-Lua helper. At that point,
-install busted, add `tests/L1/`, and write the regression test
-alongside the fix. Don't paper over a regression with a quick fix that
-lacks a unit test.
+**J1: When to activate L1.** ✅ Resolved — L1 went active during
+the test-suite buildout (the user overrode the "Not yet" default
+and asked for ground-up TDD starting at L1). 35 tests across 5
+helpers shipped via the plain-Lua harness + `debug.getupvalue`
+approach (no init.lua modification, no busted dep). The activation
+trigger framing is now historical; new pure-Lua helpers should get
+L1 coverage at write time, not "after a regression."
 
 **Should L8 GUI tests verify popup canvas rendering?** No. Four rows
 of styled text via `hs.canvas` doesn't warrant a screenshot-diffing
