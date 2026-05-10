@@ -80,7 +80,7 @@ This unification simplifies the implementation, eliminates a class of bugs (comp
 
 ### 0a. 🏗 `chainGeneration` token (council mitigation)
 
-**Where:** new `state.chainGeneration` integer; bumped at chain start (LOCK), BAIL_CHAIN, watchdog fire, `:stop()`, and on screen-watcher reconfig.
+**Where:** new `state.chainGeneration` integer; bumped at chain start (LOCK), BAIL_CHAIN, watchdog fire, `:stop()`, and on screen-watcher reconfig. Consolidated state-additions table in `dev-docs/v3-implementation-handoff.md` §2.
 
 **Why:** Hammerspoon timer callbacks queue on the main loop and yield between iterations. Without a generation token, a poll-loop closure captured before BAIL_CHAIN can still execute its next tick after the chain has been bailed, dispatching `gotoSpace` against a stale `expectedEndState` or a target that no longer exists.
 
@@ -413,12 +413,12 @@ The Q1 resolution adds zero new code paths; it just changes what value is writte
 
 ## Build order
 
-If we land v3 in stages rather than one giant patch:
+**Canonical build order with per-stage shape, transient-state notes, and acceptance criteria lives in `dev-docs/v3-implementation-handoff.md` §3.** Summary:
 
-1. **Foundation (no behavior change):** item 9a (remove redundant + racy baseline writes), item 8 (fix `:start()` race). These are pure cleanup. Note: item 9b is part of stage 3 (rolls into item 2).
-2. **Hardening (loud failures):** item 4 (Accessibility hard block), item 7 (watchdog), item 6 (`:stop` halt fix). These add safety nets without changing the sync flow.
-3. **Verify-based core:** items 0, 0a, 1, 2, 5, 5b (compute expectedEndState, chainGeneration token, per-target poll-verify, per-target observed-value writes, drop debounce, end-of-chain consistency check). The diagram's main change. **Cannot be sub-divided** — see "coordinated bundle" note above.
-4. **Second entry path:** item 3 (screen watcher). Independent of the verify changes; can land before or after.
-5. **Diagnostics:** item 10 (`:status` method).
+1. **Foundation** — item 9a, item 8 (pure cleanup)
+2. **Hardening** — items 4, 7, 6 (loud failures, no chain logic change)
+3. **Verify-based core** — items 0, 0a, 1, 2, 5, 5b, 9b (coordinated bundle; cannot sub-divide)
+4. **Second entry path** — item 3 (screen watcher)
+5. **Diagnostics** — item 10 (`:status` method) + README/docs.json updates
 
-Manual test checklist from `dev-docs/manual-test-checklist.md` (TBD — should be written before stage 1 starts) needs to pass at each stage.
+Manual test checklist (`dev-docs/manual-test-checklist.md`) must pass at each stage per its "What passing means per stage" section.

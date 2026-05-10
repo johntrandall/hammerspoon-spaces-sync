@@ -48,9 +48,9 @@
 | # | Scenario | Setup | Steps | v0.2 expected | v3 expected | v0.2 actual | v3 actual |
 |---|----------|-------|-------|---------------|-------------|-------------|-----------|
 | 16 | Forced gotoSpace drop | Lower `obj.pollTimeout = 0.05` (v3 only) | Swipe 1 in `{{1,2,3,4}}` | n/a | Per-target verify times out; WARN log per target; chain continues; VERIFY_END_STATE flags drift | | |
-| 17 | Stage Manager toggled on | Enable Stage Manager mid-session | Swipe with fullscreen Space active | Untested | Polling likely times out on fullscreen Space; flagged in OmniFocus task as known-broken | | |
+| 17 ⊘ | Stage Manager toggled on **(out-of-scope; documented limitation)** | Enable Stage Manager mid-session | Swipe with fullscreen Space active | Untested | Polling likely times out on fullscreen Space; flagged in OmniFocus task as known-broken | | |
 | 18 | Add Space via Mission Control | Mid-chain | Cmd+Up; press +; close MC | Possibly errors | NO_CHANGE absorbs spurious watcher fires | | |
-| 19 | Reorder Spaces via Mission Control | Mid-chain | Cmd+Up; drag a Space to new position | Index-based sync may go to wrong Space (Spaces have stable IDs but their index shifts) | Same — Space IDs stable, indices not. Out-of-scope follow-up | | |
+| 19 ⊘ | Reorder Spaces via Mission Control **(out-of-scope; documented limitation)** | Mid-chain | Cmd+Up; drag a Space to new position | Index-based sync may go to wrong Space (Spaces have stable IDs but their index shifts) | Same — Space IDs stable, indices not. Out-of-scope follow-up | | |
 | 20 | Display sleep + wake | Sleep all displays via menubar | Wait 30 s; wake | May not refire watcher | Same as v0.2 | | |
 | 21 | `hs.reload()` mid-chain | Swipe; `hs -c 'hs.reload()'` within 1 s | | New VM; chain abandoned; baseline re-init | Same | | |
 

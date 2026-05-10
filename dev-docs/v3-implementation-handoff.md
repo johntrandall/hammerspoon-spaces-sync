@@ -24,7 +24,7 @@ The line numbers below are accurate as of commit `08c6162` (~v0.2 of the spoon).
 
 | Symbol | Lines (current) | v3 disposition |
 |---|---|---|
-| `state` table init | ~185-198 | Add fields: `chainGeneration` (int, init 0), `chainTimers` (list, init `{}`), `watchdogTimer` (handle, init nil). See §6 below. |
+| `state` table init | ~185-193 | Add fields: `chainGeneration` (int, init 0), `chainTimers` (list, init `{}`), `watchdogTimer` (handle, init nil). See §2 below. |
 | `getSpaceAtIndex` | ~280 | KEEP. Used by item 0. |
 | `getTargetsFor` | ~238 | KEEP. Used by item 0. |
 | `syncTarget` | ~903-948 | REPLACE body. v0.2 dispatches `gotoSpace` + logs. v3: returns the expected `targetSpaceID` to the chain runner; dispatch moves into `syncNext`. |
@@ -36,12 +36,12 @@ The line numbers below are accurate as of commit `08c6162` (~v0.2 of the spoon).
 | `:toggle`, `:isEnabled` | ~1297-1326 | KEEP (no changes). |
 | `:showNames`, `:renameCurrentSpace` | ~1328-1453 | KEEP (no changes). |
 | `:bindHotkeys` | ~1455-1479 | KEEP. (Future: `syncNow`, `openSettings` per the settings track — out of v3 scope.) |
-| `obj.switchDelay` | line 105 | DEPRECATE (item 1). Keep symbol parseable for one release; no-op the value. |
-| `obj.debounceSeconds` | line 113 | DEPRECATE (item 2). Same lifecycle. |
+| `obj.switchDelay` | line 105 | DEPRECATE per `code-changes-pending.md` item 1. |
+| `obj.debounceSeconds` | line 113 | DEPRECATE per `code-changes-pending.md` item 2 (same lifecycle as item 1). |
 
 ## 2. State additions
 
-v3 adds three fields to the `state` table. Initialize them in the existing init block (~line 185).
+v3 adds three fields to the `state` table. Initialize them in the existing init block (~line 185). Per-item rationale lives in `code-changes-pending.md` items 0a (chainGeneration), 1 (chainTimers), 7 (watchdogTimer).
 
 | Field | Init | Lifecycle |
 |---|---|---|
@@ -67,15 +67,15 @@ Write `dev-docs/manual-test-checklist.md` (see §4 below). Run it against curren
 - **Item 8** — remove `state.lastActiveSpaces = ...` at `init.lua:1254` (`:start` race fix).
 - **Item 9a** — remove redundant write at `init.lua:1025` (chain end; line 1043 overwrites it 0.8s later).
 
-Done when: full v0.2 manual test checklist still passes; B1 no longer reproduces.
+Done when: checklist scenarios 1-4 still pass at v0.2 baseline; B1 no longer reproduces.
 
 ### Stage 2: Hardening (loud failures, no chain logic change yet)
 
 - **Item 4** — Accessibility hard-block in `:start`. Adds 8 lines after the existing `checkEnvironment()` call.
 - **Item 6** — `:stop` mid-chain halt. Add `state.enabled` check at top of `syncNext`. (Note: `chainGeneration` arm is added in Stage 3; for now, only `state.enabled` is checked.) Add baseline refresh + ordering (see item 6 in code-changes-pending).
-- **Item 7** — Watchdog timer for stuck `syncInProgress`. Hard-code 8 s bound and use a single `state.watchdogTimer` field for now; refactor into `chainTimers` in Stage 3.
+- **Item 7** — Watchdog timer for stuck `syncInProgress`. **Stage-2 transient shape:** hard-code `8 s` bound; use a single `state.watchdogTimer` field (NOT `state.chainTimers` — that data structure doesn't exist yet). The §2 state table describes the END state of v3; in Stage 2, `state.watchdogTimer` is its own field. Stage 3 refactors it into `state.chainTimers` along with the new poll timers.
 
-Done when: Accessibility revoked at `:start` produces alert + abort; mid-chain `:stop` halts within 50 ms; watchdog fires + clears flag if induced via injected `error()` in `syncTarget`.
+Done when: checklist scenarios 8, 22 pass; watchdog fires + clears flag if induced via injected `error()` in `syncTarget` (no checklist scenario; verify manually).
 
 ### Stage 3: Verify-based core (one coordinated landing — cannot be sub-divided)
 
@@ -90,13 +90,13 @@ Done when: Accessibility revoked at `:start` produces alert + abort; mid-chain `
 - Refactor item 7's watchdog to register in `chainTimers`, capture `chainGeneration`.
 - Deprecate `obj.switchDelay` and `obj.debounceSeconds` (warn-and-no-op).
 
-Done when: full manual test checklist passes; `obj.pollTimeout = 2.0` is the only timing knob in active use; mid-chain user override is detected and logged at the appropriate severity per §10 of the diagram.
+Done when: checklist scenarios 1-3 pass at v3 timings; 5, 6, 7 newly pass; 16, 18, 24 pass; `obj.pollTimeout` is the only timing knob in active use (`switchDelay`, `debounceSeconds` deprecated and no-op).
 
 ### Stage 4: Second entry path
 
 - **Item 3** — `hs.screen.watcher` second entry path with debounce (see SW_DEBOUNCE node in diagram for the burst-coalescing pattern).
 
-Done when: plug/unplug a monitor mid-session triggers rebuild + status HUD; mid-chain reconfig bails the chain cleanly via BAIL_CHAIN.
+Done when: checklist scenarios 11-15 newly pass.
 
 ### Stage 5: Diagnostics
 
@@ -106,32 +106,14 @@ Done when: plug/unplug a monitor mid-session triggers rebuild + status HUD; mid-
 
 ## 4. Manual test checklist (P3 prerequisite)
 
-Stub `dev-docs/manual-test-checklist.md` with this seed table BEFORE any code changes. Fill in `Steps` and `Expected (v0.2)` columns by running each scenario against the current code.
+The full checklist lives in **`dev-docs/manual-test-checklist.md`** — 30 scenarios across 6 groups (happy paths, races, reconfig, macOS misbehavior, lifecycle, UI surfaces). Each row has v0.2 expected, v3 expected, and blank "actual" columns to fill in.
 
-| # | Scenario | Setup | Expected (v0.2) | Expected (v3) |
-|---|---|---|---|---|
-| 1 | Single swipe, 2-display group | `syncGroups = {{1,2}}`, both displays at index 1 | Display 2 follows display 1 in ~0.3-1.1 s | Display 2 follows in ~0.75 s (mean F-010); both verifiable via `activeSpaceOnScreen` |
-| 2 | Single swipe, 3-display group | `syncGroups = {{1,2,3}}` | All 3 sync within ~1.4 s | All 3 sync within ~1.5 s typical |
-| 3 | Single swipe, 4-display group | `syncGroups = {{1,2,3,4}}` | Sync within ~1.7 s | Sync within ~2.3 s typical (per F-010) |
-| 4 | Mid-chain user re-swipe (trigger) | Swipe trigger; within 0.5 s swipe trigger again | Second swipe dropped (B2) | Detected by VERIFY_END_STATE; log ERROR; baseline refreshed |
-| 5 | Mid-chain user swipe (target) | Swipe trigger; within 0.5 s swipe a target | Target lands wherever user put it; baseline stale | Detected by VERIFY_END_STATE; log ERROR; baseline refreshed |
-| 6 | Mid-chain swipe (independent) | `syncGroups = {{1,2}}`, swipe display 1; mid-chain swipe display 4 (independent) | D4 swipe dropped silently (B2) | Detected by VERIFY_END_STATE; log INFO (we noticed but didn't act) |
-| 7 | Mid-chain `:stop()` | Swipe; within 1 s call `spoon.SpacesSync:stop()` | Chain continues to dispatch (B2 bug) | Chain halts within 50 ms |
-| 8 | Mid-chain monitor unplug (target) | Swipe; mid-chain pull cable on a target | Sync may or may not complete; map stale | Screen-watcher fires; BAIL_CHAIN; rebuild; status HUD; `lastActiveSpaces` truthful |
-| 9 | Mid-chain monitor unplug (trigger) | Same but pull trigger | Map stale | Same as #8 |
-| 10 | New monitor plug-in (idle) | Plug a 5th monitor while running | Map stale until restart | Screen-watcher rebuilds map + baseline; status HUD |
-| 11 | Lid close (laptop trigger) | Close lid mid-chain | Map stale | Same as #8 |
-| 12 | Mid-chain Mission Control add Space | Cmd+Up; press +; close | Possibly errors | NO_CHANGE catches; chain unaffected |
-| 13 | macOS gotoSpace dispatch drop (forced) | Inject by lowering `pollTimeout` to 0.05 s | Chain dispatches no-op or completes wrong | Per-target verify times out; logged; chain continues; VERIFY_END_STATE flags drift |
-| 14 | Stage Manager toggled on | Enable Stage Manager mid-session | Untested in v0.2 | Polling may time out on fullscreen Spaces; flagged in OmniFocus as known-broken (item 11 in pending list) |
-| 15 | Display sleep + wake | Sleep all displays; wake | May or may not refire watcher | Same as v0.2 (no special handling) |
-| 16 | Accessibility revoked at `:start` | Revoke before reload; `hs.reload()` | Silent fail of `gotoSpace` | Hard block + alert + abort |
-| 17 | Accessibility revoked while running | Revoke after `:start` | gotoSpace silently no-ops | Per-target verify times out; logged at WARN; user re-swipes ineffectually until reload (out-of-scope follow-up) |
-| 18 | `hs.reload()` mid-chain | Swipe; immediately `hs.reload()` | New VM; chain abandoned; baseline re-init | Same |
-| 19 | Misconfigured `syncGroups` | `syncGroups = {{1,5}}` on 4-display setup | Position 5 logs warning at start; never participates | Same; VALIDATE_CONFIG logs again on reconfig |
-| 20 | `:status()` invocation | `hs -c 'spoon.SpacesSync:status()'` | Method doesn't exist | Returns table — see §7 |
-| 21 | Picker hotkey during chain | `:showNames()` during sync | Existing behavior | Existing behavior (picker is independent of sync) |
-| 22 | Toggle hotkey rapid double-press | Press toggle twice in <100 ms | Possibly off-then-on (B2 race) | Off then on cleanly; chain halt fires per item 6 |
+Per-stage gating ("which scenarios pass at each stage") is documented in that file's "What passing means per stage" section.
+
+Order of operations:
+1. Run the checklist against current `init.lua` (v0.2) FIRST. Some scenarios will fail (B1 race, B2 mid-chain `:stop`); record those as v0.2 baselines.
+2. After each implementation stage lands, re-run the relevant scenarios from §3 below.
+3. v3 is shippable when scenarios 1-16, 18, 21-25, 28-30 all pass; 17 (Stage Manager) and 19 (mid-chain reorder) are documented known limitations per the checklist.
 
 ## 5. P2 single-exit refactor — target shape
 
@@ -185,12 +167,12 @@ Append these to each item in `code-changes-pending.md` as you implement.
 |---|---|
 | 0 | `expectedEndState` produced at chain start matches: snapshot of `activeSpaces` with sync-group target entries replaced by `getSpaceAtIndex(target, triggerIndex)`. Targets where that returns nil keep snapshot value. Verified by injecting a logger.d call. |
 | 0a | `chainGeneration` is incremented at LOCK, BAIL_CHAIN, watchdog fire, `:stop()`. Closure with stale `myGen` returns immediately on next tick. Verified by setting a long pollInterval and bumping generation manually mid-poll. |
-| 1 | A 4-display sync chain completes with `obj.switchDelay` deleted; average chain duration ≤ idle worst case + 200 ms; one forced macOS dispatch drop (lower pollTimeout to 0.05) produces a single WARN log and chain continues. |
+| 1 | (a) A 4-display sync chain completes with `obj.switchDelay` deprecated; (b) average chain duration ≈ F-010 §4.1 mean × numTargets; (c) one forced dispatch drop (lower `obj.pollTimeout`) produces a single WARN log and the chain continues to the next target. Verified by checklist scenarios 1-3, 16. |
 | 2 | After each per-target poll, `state.lastActiveSpaces[targetUUID]` equals what `activeSpaceOnScreen(target)` returned post-poll (success → expected; timeout → old value). Verified by checklist scenarios 5, 13. |
 | 3 | Plug + unplug fires screen watcher; rebuild runs ONCE per real reconfig (not per fire); status HUD appears once per reconfig. Verified by checklist scenarios 8-11. |
 | 4 | Revoking Accessibility before `:start` produces alert + sets `osBlocked = true`; `:start` returns without arming watcher. |
 | 5 | `obj.debounceSeconds` no longer affects timing; chain ends immediately after VERIFY_END_STATE. |
-| 5b | VERIFY_END_STATE runs only on sync-group path; produces ERROR/INFO log per role; refreshes `state.lastActiveSpaces`. Verified by scenarios 4, 5, 6. |
+| 5b | VERIFY_END_STATE runs only on sync-group path; produces ERROR/INFO log per role; refreshes `state.lastActiveSpaces`; writes a one-shot summary into `state.lastVerifierResult = {timestamp = ..., mismatches = {...}}` for `:status()` (item 10) to surface. Verified by manual-test-checklist scenarios 5, 6, 7. |
 | 6 | `:stop()` mid-chain halts dispatch within 50 ms (scenario 7). |
 | 7 | Injecting `error()` in `syncTarget` causes watchdog to fire within 8 s; logs at ERROR; clears `syncInProgress`; refreshes baseline. |
 | 8 | Calling `:start` then immediately swiping does NOT silently absorb the swipe (scenario reproduces). |
