@@ -29,9 +29,11 @@ flowchart TB
         end
     end
 
-    JSON[(SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊new＊ canonical config:<br/>enabled, groupOf,<br/>timing, _detected)]:::config
-    Plist[(hs.settings plist<br/><br/>workspace names<br/>＊unchanged＊)]:::store
-    HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json]:::external
+    JSON[(SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊new＊ canonical config<br/>enabled, syncMode, groupOf,<br/>_lastSeen, timing, hotkeys)]:::config
+    Plist[(hs.settings plist<br/><br/>workspace names<br/>＊migrated atomically＊<br/>on groupOf change)]:::store
+    HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json<br/>hs.shutdownCallback]:::external
+
+    Shutdown[hs.shutdownCallback<br/>＊new＊ teardown<br/>delete webview<br/>unsubscribe userContent<br/>stop pathwatcher]:::proposed
 
     User -->|hotkeys| API
     User -->|opens| SettingsPane
@@ -41,8 +43,12 @@ flowchart TB
     API -->|reads runtime fields<br/>populated by config| Engine
     SettingsPane <-->|JS↔Lua<br/>loadState applyState| ConfigMod
 
-    ConfigMod -->|reads/writes| JSON
-    ConfigMod -->|hs.pathwatcher<br/>hot-reload on edit| JSON
+    ConfigMod -->|reads/writes<br/>SHA-256 ring buffer<br/>echo suppression| JSON
+    ConfigMod -->|watches parent dir<br/>filters by basename<br/>retries on parse fail| JSON
+    ConfigMod -->|on groupOf change<br/>migrate keys atomically<br/>flag orphans| Names
+
+    SettingsPane -->|register| Shutdown
+    ConfigMod -->|register| Shutdown
 
     Watcher -->|fires on Space change| SyncEng
     SyncEng --> GroupLook

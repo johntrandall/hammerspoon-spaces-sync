@@ -13,9 +13,9 @@
     --row-fill: rgba(255, 255, 255, 0.03);
     --row-fill-hover: rgba(255, 255, 255, 0.06);
     --text-primary: rgba(255, 255, 255, 1.0);
-    --text-secondary: rgba(255, 255, 255, 0.58);
-    --text-tertiary: rgba(255, 255, 255, 0.42);
-    --text-disabled: rgba(255, 255, 255, 0.32);
+    --text-secondary: rgba(255, 255, 255, 0.72);   /* was 0.58 — WCAG AA */
+    --text-tertiary: rgba(255, 255, 255, 0.55);    /* was 0.42 — WCAG AA */
+    --text-disabled: rgba(255, 255, 255, 0.36);
     --accent-blue: rgb(10, 132, 255);     /* macOS system blue */
     --accent-blue-fade: rgba(10, 132, 255, 0.22);
     --warn: #d4a853;
@@ -418,7 +418,11 @@
     font-size: 12px;
   }
 
-  /* Info-icon tooltip — pure CSS, dark theme. Hover the icon to see. */
+  /* Info-icon popover.
+     Real <button> so keyboard + screen-readers can reach it. Hover OR
+     focus reveals the popover (focus-within covers the click+focus
+     case). Click-to-toggle in the real implementation will do the
+     same plus aria-expanded; the static mock relies on :focus. */
   .info-tip {
     display: inline-flex;
     align-items: center;
@@ -429,18 +433,21 @@
     margin-left: 6px;
     color: var(--text-tertiary);
     font-size: 12px;
-    cursor: help;
+    cursor: pointer;
     position: relative;
     user-select: none;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: transparent;
+    padding: 0;
+    font-family: inherit;
   }
-  .info-tip:hover {
+  .info-tip:hover, .info-tip:focus-visible {
     color: var(--accent-blue);
-    border-color: rgba(10, 132, 255, 0.5);
+    border-color: rgba(10, 132, 255, 0.6);
+    outline: none;
   }
   .info-tip::before { content: "i"; font-style: italic; font-weight: 600; font-size: 10px; }
-  .info-tip::after {
-    content: attr(data-tip);
+  .info-tip__popover {
     position: absolute;
     bottom: calc(100% + 8px);
     left: 50%;
@@ -448,23 +455,93 @@
     width: 300px;
     padding: 10px 12px;
     background: rgba(20, 20, 22, 0.97);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 8px;
     color: var(--text-primary);
     font-size: 12px;
     line-height: 1.5;
-    font-style: normal;
-    font-weight: 400;
-    white-space: normal;
     text-align: left;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.12s ease;
     z-index: 100;
+    pointer-events: auto;  /* selectable text, unlike before */
+    cursor: text;
   }
-  .info-tip:hover::after { opacity: 1; visibility: visible; }
+  .info-tip:hover .info-tip__popover,
+  .info-tip:focus-within .info-tip__popover,
+  .info-tip[aria-expanded="true"] .info-tip__popover {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Segmented control — Mac-native pattern for picking 1 of N modes.
+     Used for "Sync mode: [Automatic | On demand only]". */
+  .segmented {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .segmented .seg {
+    padding: 5px 12px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .segmented .seg.active {
+    background: var(--accent-blue);
+    color: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Environment-precondition banner — shown at the top when the Spoon
+     can't function. The "Displays have separate Spaces" preference
+     being OFF is the #1 install-time gotcha (see quirks doc). */
+  .env-banner {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    background: rgba(212, 83, 83, 0.10);
+    border: 1px solid rgba(212, 83, 83, 0.42);
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+  .env-banner .icon {
+    color: #ef9a9a;
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .env-banner .title {
+    color: #ef9a9a;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .env-banner .body-text {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-top: 3px;
+    line-height: 1.5;
+  }
+  .env-banner a {
+    color: var(--accent-blue);
+    text-decoration: none;
+  }
+
+  /* Section hint text — small instructional row below a section header */
+  .section-hint {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    margin: -4px 4px 8px;
+  }
 
   /* Footer / action buttons */
   .footer {
@@ -538,18 +615,37 @@
     <div class="body">
 
       <!-- ============================================================
+           Environment-precondition banner — shown when "Displays have
+           separate Spaces" is OFF (the Spoon can't function). This is
+           the #1 install-time gotcha; surfacing it here saves users
+           from reading the console for the same diagnostic init.lua
+           already logs. Hidden when env checks pass.
+           ============================================================ -->
+      <div class="env-banner">
+        <div class="icon">⚠</div>
+        <div>
+          <div class="title">"Displays have separate Spaces" is off</div>
+          <div class="body-text">
+            All monitors share one Space — there's nothing to sync. Enable
+            the setting in <a href="#">System Settings → Desktop &amp; Dock →
+            Mission Control</a>. macOS requires logout to apply.
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
            General — master switch governs the whole Spoon
            ============================================================ -->
       <h3>General</h3>
       <div class="row master">
         <div>
-          <div class="label">SpacesSync active</div>
+          <div class="label">Enable SpacesSync</div>
           <div class="sublabel">
-            Master switch. When off, hotkeys (rename, Space picker), the
-            post-switch popup, the status HUD, and sync are all dormant.
+            Hotkeys, popup, picker, status HUD, and sync. Disable to
+            silence everything until you toggle back on.
           </div>
         </div>
-        <div class="switch" title="active = true"></div>
+        <div class="switch" title="enabled = true"></div>
       </div>
 
       <!-- ============================================================
@@ -657,10 +753,17 @@
             <span class="caret">▾</span>
           </div>
         </div>
+        <!-- Stale entry: position 5 was assigned to a group in
+             SpacesSync.json but no display sits at position 5 right now.
+             Storing display name + UUID + last-seen date in `_lastSeen`
+             gives the user a useful identification and timeline rather
+             than just "not detected". -->
         <div class="group-row">
           <div class="pos">position 5</div>
-          <div class="display-name" style="color: var(--text-disabled); font-style: italic">not connected</div>
-          <div class="stale-warn">⚠ in config, not detected</div>
+          <div class="display-name" style="font-style: italic; color: var(--text-tertiary)">
+            LG SDQHD #5 — last seen 2026-04-12
+          </div>
+          <div class="stale-warn">⚠ not currently connected</div>
         </div>
       </div>
       <div class="footnote" style="margin-top: 10px;">
@@ -669,25 +772,30 @@
       </div>
 
       <!-- ============================================================
-           Sync mode — separate from master, planned for two modes
+           Sync — segmented control selects Automatic or On-demand mode.
+           Sync Now is always available as a one-shot, regardless of mode.
            ============================================================ -->
       <h3>Sync</h3>
       <div class="row">
         <div>
-          <div class="label">Auto-sync on Space change</div>
+          <div class="label">Sync mode</div>
           <div class="sublabel">
-            When on, the watcher mirrors every Space switch across each group.
-            When off, displays move independently — use <em>Sync Now</em> to re-align.
+            <strong>Automatic</strong> — the watcher mirrors every Space
+            switch across each group. <strong>On demand only</strong> —
+            displays move independently; use <em>Sync Now</em> to re-align.
           </div>
         </div>
-        <div class="switch" title="autoSync = true"></div>
+        <div class="segmented" role="radiogroup" aria-label="Sync mode">
+          <button class="seg active" role="radio" aria-checked="true">Automatic</button>
+          <button class="seg" role="radio" aria-checked="false">On demand only</button>
+        </div>
       </div>
       <div class="row">
         <div>
           <div class="label">Sync now</div>
           <div class="sublabel">
-            One-shot: bring all displays in each group to the trigger display's
-            current Space index. Works with Auto-sync on or off.
+            One-shot: bring all displays in each group to the trigger
+            display's current Space index. Works in either Sync mode.
           </div>
         </div>
         <button class="btn-action">
@@ -703,28 +811,58 @@
       <div class="timing-grid">
         <span class="timing-label">
           Switch delay
-          <span class="info-tip" data-tip="Pause between each gotoSpace() call when syncing across displays. macOS silently drops back-to-back Space switches if they fire too close together — 0.3s is the verified-stable threshold. Lowering risks dropped switches; raising slows multi-display sync. Default: 0.3s."></span>
+          <button type="button" class="info-tip" aria-label="What is Switch delay?" aria-expanded="false">
+            <span class="info-tip__popover" role="tooltip">
+              Pause between each <code>gotoSpace()</code> call when syncing
+              across displays. macOS silently drops back-to-back Space
+              switches if they fire too close together — 0.3s is the
+              verified-stable threshold. Lowering risks dropped switches;
+              raising slows multi-display sync. Default: 0.3s.
+            </span>
+          </button>
         </span>
         <input type="text" value="0.30">
         <span class="unit">s</span>
 
         <span class="timing-label">
           Debounce
-          <span class="info-tip" data-tip="After a sync chain completes, ignore Space-change events for this many seconds. Prevents the watcher from reacting to its own programmatic switches and looping. Covers the typical Mission Control animation window. Default: 0.8s."></span>
+          <button type="button" class="info-tip" aria-label="What is Debounce?" aria-expanded="false">
+            <span class="info-tip__popover" role="tooltip">
+              After a sync chain completes, ignore Space-change events for
+              this many seconds. Prevents the watcher from reacting to its
+              own programmatic switches and looping. Covers the typical
+              Mission Control animation window. Default: 0.8s.
+            </span>
+          </button>
         </span>
         <input type="text" value="0.80">
         <span class="unit">s</span>
 
         <span class="timing-label">
           Popup duration
-          <span class="info-tip" data-tip="How long the Space-names popup stays visible — the panel listing every Space on a display with its index and name (e.g. ‘1: Notes, 2: Music’). Shown after a sync, after independent-display switches, and via the picker hotkey. Default: 2s."></span>
+          <button type="button" class="info-tip" aria-label="What is Popup duration?" aria-expanded="false">
+            <span class="info-tip__popover" role="tooltip">
+              How long the <em>Space-names popup</em> stays visible — the
+              panel listing every Space on a display with its index and
+              name (e.g. "1: Notes, 2: Music"). Shown after a sync, after
+              independent-display switches, and via the picker hotkey.
+              Default: 2s.
+            </span>
+          </button>
         </span>
         <input type="text" value="2.0">
         <span class="unit">s</span>
 
         <span class="timing-label">
           Status HUD duration
-          <span class="info-tip" data-tip="How long the single-line ‘SpacesSync: ON / OFF’ banner stays visible when the Spoon starts, stops, or toggles. Different from the popup — this is the wider, centered status indicator. Default: 3s."></span>
+          <button type="button" class="info-tip" aria-label="What is Status HUD duration?" aria-expanded="false">
+            <span class="info-tip__popover" role="tooltip">
+              How long the single-line <em>"SpacesSync: ON / OFF"</em>
+              banner stays visible when the Spoon starts, stops, or
+              toggles. Different from the popup — this is the wider,
+              centered status indicator. Default: 3s.
+            </span>
+          </button>
         </span>
         <input type="text" value="3.0">
         <span class="unit">s</span>
@@ -735,6 +873,9 @@
            Esc cancels. Reset link restores the default for that row.
            ============================================================ -->
       <h3>Hotkeys</h3>
+      <div class="section-hint">
+        Click any shortcut to re-record. Esc cancels. Reset restores the default.
+      </div>
       <div class="inset">
         <div class="hotkey-row">
           <div>
@@ -784,19 +925,28 @@
       </div>
     </div>
 
+    <!-- Footer: just Done. Every change is autosaved live to JSON
+         (matching System Settings.app since Ventura) and converges with
+         the pathwatcher hot-reload — there's nothing to "Apply". -->
     <div class="footer">
-      <button class="btn cancel">Cancel</button>
-      <button class="btn apply">Apply</button>
+      <button class="btn apply">Done</button>
     </div>
   </div>
 
   <!-- Annotations on the side -->
   <div class="callouts">
     <h4>Two layers of "on"</h4>
-    The <strong>master</strong> switch governs everything the Spoon does
-    — rename, picker, popups, hotkeys, sync. <strong>Auto-sync</strong>
-    governs only the watcher: when off, the rest of the Spoon still
-    works, you just sync displays manually via <em>Sync Now</em>.
+    <strong>Enable SpacesSync</strong> is the master switch — governs
+    rename, picker, popups, hotkeys, and sync. <strong>Sync mode</strong>
+    is independent: <em>Automatic</em> runs the watcher, <em>On demand
+    only</em> stops the watcher and leaves <em>Sync Now</em> as the way
+    to re-align displays.
+
+    <h4>Autosave, no Apply</h4>
+    Every change live-commits to <code>SpacesSync.json</code>, matching
+    macOS System Settings since Ventura. Combined with hot-reload via
+    <code>hs.pathwatcher</code>, the GUI and a text editor are
+    interchangeable surfaces — neither one needs an Apply button.
 
     <h4>Why two display sections?</h4>
     "Detected Displays" answers <em>what's plugged in right now</em> — pure
@@ -815,10 +965,17 @@
     model is a <code>groupOf</code> map keyed by position, so overlap is
     impossible by construction — not a runtime check.
 
-    <h4>Stale entries</h4>
-    Position 5 is in <code>SpacesSync.json</code> but no display sits there.
-    Surfaced as a warning instead of being silently dropped — leave it
-    (will activate on replug) or remove it.
+    <h4>Stale entries with memory</h4>
+    Position 5 is in <code>SpacesSync.json</code> but no display sits
+    there. We remember the display's name, UUID, and last-seen date in a
+    <code>_lastSeen</code> map, so the warning is "LG SDQHD #5, last
+    seen 2026-04-12" — actionable rather than anonymous. Replug and the
+    entry rejoins; remove it to forget.
+
+    <h4>Environment-precondition banner</h4>
+    The red banner at the top fires when "Displays have separate Spaces"
+    is OFF — surfacing the #1 install-time gotcha in the GUI rather
+    than the Hammerspoon console. Hidden when env checks pass.
 
     <h4>Apply persists; pathwatcher hot-reloads</h4>
     Apply writes <code>~/.hammerspoon/SpacesSync.json</code> and re-runs

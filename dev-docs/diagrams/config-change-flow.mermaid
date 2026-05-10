@@ -1,55 +1,77 @@
 ---
-title: SpacesSync — config change flow (proposed)
+title: SpacesSync config change flow (revised after expert review)
 ---
 sequenceDiagram
     autonumber
     actor User
-    participant GUI as Settings Pane<br/>(hs.webview)
+    participant GUI as Settings Pane
     participant Cfg as config.lua
     participant JSON as SpacesSync.json
     participant PW as hs.pathwatcher
-    participant Spoon as SpacesSync<br/>(engine)
+    participant Spoon as SpacesSync engine
     participant Watcher as hs.spaces.watcher
 
-    Note over User,Watcher: Two entry points, one convergent path.
+    Note over User,Watcher: Two entry points, one convergent path.<br/>Autosave on every GUI change.<br/>No Apply button.
 
     rect rgba(46,125,50,0.10)
-        Note over User,JSON: Path A — User edits via GUI
-        User->>GUI: open via ⌃⌥⌘, (or :openSettings)
+        Note over User,JSON: Path A — GUI autosave per change
+        User->>GUI: open via ⌃⌥⌘ comma
         GUI->>Cfg: loadState
         Cfg->>JSON: read
         JSON-->>Cfg: parsed state
-        Cfg-->>GUI: { enabled, groupOf, timing, detectedDisplays }
-        GUI-->>User: render form
-        User->>GUI: edit groupOf, click Apply
-        GUI->>Cfg: applyState(newState)
-        Cfg->>JSON: save (regenerates _detected)
-        Note right of Cfg: lastWriteHash recorded<br/>so pathwatcher ignores echo
+        Cfg-->>GUI: enabled, syncMode, groupOf, etc.
+        User->>GUI: edit any field
+        GUI->>Cfg: applyState newState
+        Cfg->>JSON: save
+        Note right of Cfg: echo suppression<br/>SHA-256 over full bytes<br/>push to ring of last 5 hashes<br/>absorbs FSEvents coalescing
     end
 
     rect rgba(212,168,83,0.10)
-        Note over User,JSON: Path B — User edits the JSON by hand
-        User->>JSON: vim / VSCode / etc.
-        JSON->>PW: file changed event
+        Note over User,JSON: Path B — Hand-edit the JSON
+        User->>JSON: vim or VSCode or shell redirect
+        JSON->>PW: directory event
+        PW->>PW: filter by basename
         PW->>Cfg: pathwatcher callback
         Cfg->>JSON: read
+
+        alt parse fails - partial write window
+            Note right of Cfg: doAfter 0.25s retry<br/>up to 3 attempts before logging
+            Cfg->>JSON: re-read
+        end
+
         JSON-->>Cfg: parsed state
-        Note right of Cfg: hash != lastWriteHash<br/>→ real external edit
+        Cfg->>Cfg: SHA-256 of bytes vs ring
+
+        alt hash matches recent self-write
+            Note right of Cfg: ignore - own write echo
+        else hash is novel
+            Note right of Cfg: real external edit - proceed
+        end
     end
 
-    Note over Cfg,Watcher: Convergent: both paths end here.
+    Note over Cfg,Watcher: Convergent — both paths arrive here.
 
-    Cfg->>Spoon: applyToSpoon(state)
-    Note right of Spoon: spoon.syncGroups,<br/>switchDelay, etc.<br/>updated in-place
-    Cfg->>Spoon: _applyConfig(state)
+    alt syncInProgress is true
+        Note right of Cfg: CRITICAL<br/>Mid-sync apply corrupts<br/>lastActiveSpaces baseline.<br/>Stash and exit.<br/>Debounce drains.
+        Cfg->>Spoon: pendingConfig set to state
+    else engine is idle
+        Cfg->>Spoon: applyConfig state
+        Spoon->>Spoon: rebuildPositionMap<br/>syncGroups updated<br/>switchDelay updated
 
-    alt enabled changed false → true
-        Spoon->>Watcher: setupWatcher
-        Spoon-->>User: Status HUD "ON"
-    else enabled changed true → false
-        Spoon->>Watcher: stopWatcher
-        Spoon-->>User: Status HUD "OFF"
-    else groups changed (still enabled)
-        Spoon->>Spoon: rebuildPositionMap
-        Note right of Spoon: lastActiveSpaces re-snapped<br/>so watcher baseline reflects<br/>new group membership
+        alt enabled changed off to on
+            Spoon->>Watcher: setupWatcher
+            Spoon-->>User: Status HUD ON
+        else enabled changed on to off
+            Spoon->>Watcher: stopWatcher
+            Spoon-->>User: Status HUD OFF
+        else syncMode now on-demand
+            Spoon->>Watcher: stopWatcher
+            Note right of Spoon: engine still active
+        else syncMode now automatic
+            Spoon->>Watcher: setupWatcher
+        else groups changed
+            Spoon->>Spoon: re-snap lastActiveSpaces<br/>migrate spaceNames keys atomically<br/>orphans surface as warnings
+        end
     end
+
+    Note over Spoon,Watcher: Debounce timer fires existing path.<br/>If pendingConfig set, drain via applyConfig.<br/>Otherwise clear syncInProgress as today.

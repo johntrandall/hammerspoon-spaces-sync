@@ -9,15 +9,15 @@ flowchart LR
     classDef conv fill:#2e7d32,stroke:#4caf50,color:#fff
 
     subgraph S1 [GUI shape — one row per display]
-        UI["position 1 → Group A<br/>position 2 → Group A<br/>position 3 → — None<br/>position 4 → Group B"]:::ui
+        UI["position 1 → Group A<br/>position 2 → Group A<br/>position 3 → — None<br/>position 4 → Group B<br/><br/>Letters are derived display labels<br/>(sort order). The persisted IDs are<br/>opaque — see S2."]:::ui
     end
 
     subgraph S2 [Persistent shape — SpacesSync.json]
-        JSON["{<br/>  &quot;schemaVersion&quot;: 1,<br/>  &quot;active&quot;: true,        ＊master＊<br/>  &quot;autoSync&quot;: true,      ＊watcher＊<br/>  &quot;groupOf&quot;: {<br/>    &quot;1&quot;: &quot;A&quot;,<br/>    &quot;2&quot;: &quot;A&quot;,<br/>    &quot;4&quot;: &quot;B&quot;<br/>  },<br/>  &quot;switchDelay&quot;: 0.3,<br/>  &quot;debounceSeconds&quot;: 0.8,<br/>  &quot;popupDuration&quot;: 2,<br/>  &quot;statusDuration&quot;: 3,<br/>  &quot;hotkeys&quot;: {<br/>    &quot;toggle&quot;:      [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;Y&quot;],<br/>    &quot;showNames&quot;:   [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;N&quot;],<br/>    &quot;renameSpace&quot;: [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;R&quot;],<br/>    &quot;syncNow&quot;:     [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;S&quot;],<br/>    &quot;openSettings&quot;:[&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;,&quot;]<br/>  }<br/>}"]:::stored
+        JSON["{<br/>  &quot;schemaVersion&quot;: 1,<br/>  &quot;enabled&quot;: true,           ＊master＊<br/>  &quot;syncMode&quot;: &quot;automatic&quot;,    ＊auto / on-demand＊<br/>  &quot;groupOf&quot;: {<br/>    &quot;1&quot;: &quot;grp_a8x2k0&quot;,<br/>    &quot;2&quot;: &quot;grp_a8x2k0&quot;,<br/>    &quot;4&quot;: &quot;grp_n4f7m1&quot;<br/>  },<br/>  &quot;_lastSeen&quot;: {        ＊for stale entries＊<br/>    &quot;5&quot;: { name, uuid, date }<br/>  },<br/>  &quot;switchDelay&quot;: 0.3,<br/>  &quot;debounceSeconds&quot;: 0.8,<br/>  &quot;popupDuration&quot;: 2,<br/>  &quot;statusDuration&quot;: 3,<br/>  &quot;hotkeys&quot;: {<br/>    &quot;toggle&quot;:      { mods:[ctrl,alt,cmd], key:&quot;Y&quot; },<br/>    &quot;showNames&quot;:   { mods:[ctrl,alt,cmd], key:&quot;N&quot; },<br/>    &quot;renameSpace&quot;: { mods:[ctrl,alt,cmd], key:&quot;R&quot; },<br/>    &quot;syncNow&quot;:     { mods:[ctrl,alt,cmd], key:&quot;S&quot; },<br/>    &quot;openSettings&quot;:{ mods:[ctrl,alt,cmd], key:&quot;,&quot; }<br/>  }<br/>}"]:::stored
     end
 
     subgraph S3 [Engine shape — obj.syncGroups]
-        ENG["{<br/>  {1, 2},<br/>  {4}<br/>}"]:::runtime
+        ENG["{<br/>  {1, 2},<br/>  {4}<br/>}<br/><br/>Derived from groupOf at runtime.<br/>Stable IDs collapse to ordered<br/>position lists for the sync engine."]:::runtime
     end
 
     UI -->|same membership;<br/>no conversion| JSON
@@ -29,12 +29,16 @@ flowchart LR
     JSON -.- Conv1
 
     %% Constraint annotation
-    Note1["Single-group constraint is structural:<br/>groupOf is a map keyed by position.<br/>A position can have ONE group letter.<br/>Cannot represent overlap by construction."]
+    Note1["Single-group constraint is structural:<br/>groupOf is a map keyed by position.<br/>A position can have ONE group ID.<br/>Cannot represent overlap by construction."]
     UI -.- Note1
 
-    %% Independent concern
+    %% Why opaque IDs, not letters
+    Note2["Why opaque group IDs (grp_xxxxxx) instead of letters?<br/><br/>Letters are unstable: reshuffling groups in the GUI<br/>can relabel A→B. When groups gain metadata in v2<br/>(custom name, color, per-group switchDelay), letter<br/>keys would associate metadata with the wrong group.<br/>Opaque IDs survive any GUI reshuffle."]
+    JSON -.- Note2
+
+    %% Independent concern, with explicit migration policy
     subgraph S4 [Separate concern — workspace names]
-        Names["hs.settings: SpacesSync.spaceNames<br/><br/>{<br/>  &quot;1,2&quot;: { 1: &quot;Notes&quot;, 2: &quot;Music&quot; },<br/>  &quot;4&quot;: { 1: &quot;Email&quot; }<br/>}<br/><br/>Keyed by sorted group positions.<br/>Not migrated to JSON in v1."]:::separate
+        Names["hs.settings: SpacesSync.spaceNames<br/><br/>{<br/>  &quot;1,2&quot;: { 1: &quot;Notes&quot;, 2: &quot;Music&quot; },<br/>  &quot;4&quot;: { 1: &quot;Email&quot; }<br/>}<br/><br/>Keyed by sorted group positions.<br/>Not migrated to JSON in v1.<br/><br/>＊Migration contract on groupOf change＊<br/>1. compute old → new key map<br/>2. rewrite spaceNames keys atomically<br/>3. orphans (key has no current group)<br/>   surface as a warning, not silent loss"]:::separate
     end
 
     JSON -.->|group key derived from groupOf<br/>→ name lookup| Names
