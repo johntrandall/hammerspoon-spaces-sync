@@ -12,7 +12,7 @@ flowchart TB
     User([User]):::public
 
     subgraph Spoon [SpacesSync.spoon]
-        API[Public API<br/>:start :stop :toggle<br/>:openSettings ＊new＊<br/>:bindHotkeys]:::public
+        API[Public API<br/>:start :stop :toggle<br/>:bindHotkeys<br/>:showNames :renameCurrentSpace<br/>:syncNow ＊new＊ :openSettings ＊new＊]:::public
 
         subgraph Engine [Existing engine]
             Watcher[Watcher<br/>hs.spaces.watcher]:::internal

@@ -15,7 +15,7 @@ sequenceDiagram
 
     rect rgba(46,125,50,0.10)
         Note over User,JSON: Path A — GUI autosave per change
-        User->>GUI: open via ⌃⌥⌘ comma
+        User->>GUI: invoke Open Settings (⌃⌥⌘,)
         GUI->>Cfg: loadState
         Cfg->>JSON: read
         JSON-->>Cfg: parsed state
@@ -47,6 +47,10 @@ sequenceDiagram
         else hash is novel
             Note right of Cfg: real external edit - proceed
         end
+
+        opt schemaVersion mismatch
+            Note right of Cfg: schemaVersion != 1<br/>log warn, use safe-subset (known fields only)<br/>never silently coerce
+        end
     end
 
     Note over Cfg,Watcher: Convergent — both paths arrive here.
@@ -56,7 +60,7 @@ sequenceDiagram
         Cfg->>Spoon: pendingConfig set to state
     else engine is idle
         Cfg->>Spoon: applyConfig state
-        Spoon->>Spoon: rebuildPositionMap<br/>syncGroups updated<br/>switchDelay updated<br/>bindHotkeys (always — idempotent)
+        Spoon->>Spoon: rebuildPositionMap<br/>syncGroups updated<br/>timing fields updated (switchDelay, debounceSeconds, popupDuration, statusDuration)<br/>bindHotkeys (always — idempotent)
 
         alt enabled changed off to on
             Spoon->>Watcher: setupWatcher
@@ -69,8 +73,10 @@ sequenceDiagram
             Note right of Spoon: engine still active
         else syncMode now automatic
             Spoon->>Watcher: setupWatcher
-        else groups changed
+        else groupOf changed
             Spoon->>Spoon: re-snap lastActiveSpaces<br/>migrate spaceNames keys atomically<br/>orphans surface as warnings
+        else groupLabels changed (membership unchanged)
+            Note right of Spoon: no engine work<br/>settings pane re-renders dropdown labels
         end
     end
 

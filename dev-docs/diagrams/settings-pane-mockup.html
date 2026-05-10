@@ -315,6 +315,17 @@
     background: rgba(255, 255, 255, 0.10);
     margin: 4px 2px;
   }
+  /* Caption row inside the menu — non-interactive informational text.
+     Distinct from menu-item by lack of hover, tighter padding, and
+     small uppercase tracking. Used to label collapsed group-pool ranges. */
+  .menu-caption {
+    padding: 4px 10px 4px 18px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    pointer-events: none;
+  }
 
   /* Timing fields with info icons */
   .timing-grid {
@@ -863,11 +874,8 @@
               <span class="chip b"></span>
               <span>Group B <span class="members">— position 4</span></span>
             </div>
-            <div class="menu-item" style="color: var(--text-tertiary); font-style: italic">
-              <span class="checkmark"></span>
-              <span class="chip none"></span>
-              <span>Groups C – J <span class="members">— available</span></span>
-            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-caption">Groups C – J available</div>
           </div>
         </div>
         <!-- Stale entry: position 5 was assigned to a group in
@@ -883,10 +891,6 @@
           <div class="stale-warn">⚠ not currently connected</div>
         </div>
       </div>
-      <div class="footnote" style="margin-top: 10px;">
-        Set an optional label in the Group Labels section above to
-        override the default "Group A" / "Group B" name.
-      </div>
 
       <!-- ============================================================
            Sync — segmented control selects Automatic or Manual mode.
@@ -898,8 +902,8 @@
           <div class="label">Sync mode</div>
           <div class="sublabel">
             <strong>Automatic</strong> — SpacesSync syncs every Space
-            switch to the rest of its sync group. <strong>Manual</strong> —
-            displays move independently; press <em>Sync Now</em> to bring
+            switch to the rest of the display's sync group. <strong>Manual</strong> —
+            displays move freely; press <em>Sync Now</em> to bring
             them together.
           </div>
         </div>
@@ -912,10 +916,8 @@
         <div>
           <div class="label">Sync Now</div>
           <div class="sublabel">
-            One-shot: switch the cursor display's group to the cursor display's current
-            Space. The cursor display defines the action — same
-            convention as <em>Open Space picker</em> and
-            <em>Rename current Space</em>. Works in either Sync mode.
+            One-shot: switch the cursor display's group to its current
+            Space. Works in either Sync mode.
           </div>
         </div>
         <button class="btn-action">
@@ -966,7 +968,7 @@
               panel listing every Space on a display with its index and
               name (e.g. "1: Notes, 2: Music"). Shown briefly after a sync
               and after independent-display switches. Governs only this
-              auto-dismiss popup; the interactive Space picker
+              auto-dismiss popup; the Space picker
               (⌃⌥⌘N) has its own dwell. Default: 2s.
             </span>
           </button>
@@ -978,7 +980,7 @@
           Status HUD duration
           <button type="button" class="info-tip" aria-label="What is Status HUD duration?" aria-expanded="false">
             <span class="info-tip__popover" role="tooltip">
-              How long the single-line <em>"SpacesSync: ON / OFF"</em>
+              How long the single-line <em>"SpacesSync: ON"</em> or <em>"SpacesSync: OFF"</em>
               banner stays visible when the Spoon starts, stops, or
               toggles. Different from the popup — this is the wider,
               centered status indicator. Default: 3s.
@@ -1027,14 +1029,14 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Sync Now</div>
-            <div class="sublabel">Switch the cursor display's group to the cursor display's current Space.</div>
+            <div class="sublabel">Switch the cursor display's group to its current Space.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
           <a class="kbd-reset" title="Restore default">Reset</a>
         </div>
         <div class="hotkey-row">
           <div>
-            <div class="label">Open settings</div>
+            <div class="label">Open Settings</div>
             <div class="sublabel">Open this pane. ⌃⌥⌘, echoes the macOS ⌘, Preferences convention.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ ,</span>
@@ -1058,11 +1060,9 @@
   <!-- Annotations on the side -->
   <div class="callouts">
     <h4>Two layers of "on"</h4>
-    The master switch and sync mode are deliberately independent so
-    you can keep the rest of the spoon's affordances — picker, rename,
-    popups — even when you don't want auto-syncing. Disabling
-    everything is a single click; freezing only the sync watcher is a
-    segmented control away.
+    Master and sync mode are deliberately independent: keep the rest
+    of the spoon's affordances even when auto-syncing is off. Each
+    in-pane sublabel covers its specific scope.
 
 <h4>Why two display sections?</h4>
     "Detected Displays" answers <em>what's plugged in right now</em> — pure
@@ -1085,12 +1085,9 @@
     impossible by construction — not a runtime check.
 
     <h4>Stale entries with memory</h4>
-    Position 5 is in <code>SpacesSync.json</code> but no display sits
-    there. We remember the display's name, UUID, last-seen date, and
-    <em>which group it was in</em> via the <code>_lastSeen</code> map,
-    so the warning is "LG SDQHD #5, last seen 2026-04-12, was in A:
-    Code" — actionable rather than anonymous. Replug and the entry
-    rejoins.
+    Configured-but-disconnected positions surface in the row stream
+    with their last-seen timeline and prior group letter pulled from
+    the <code>_lastSeen</code> map. Replug and the entry rejoins.
 
     <h4>Environment-precondition banner</h4>
     The red banner at the top fires when "Displays have separate Spaces"
@@ -1109,11 +1106,10 @@
     behaviors — the user shouldn't have to read source comments to know
     why 0.3s and not 0.1s.
 
-    <h4>Hotkeys live with the rest of config</h4>
-    Bindings persist in <code>SpacesSync.json</code> alongside groups
-    and timing — same hand-edit + GUI surfaces. Sync Now keeps its
-    inline kbd hint on the control panel as a discoverability cue;
-    the Hotkeys section is where the actual binding is changed.
+    <h4>Why Sync Now shows two shortcuts</h4>
+    Sync Now keeps its inline kbd hint on the control panel as a
+    discoverability cue; the Hotkeys section is where the binding
+    is actually changed. The duplication is intentional.
   </div>
 </div>
 

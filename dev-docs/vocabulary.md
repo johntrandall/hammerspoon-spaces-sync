@@ -118,13 +118,15 @@ The single-line "SpacesSync: ON" / "SpacesSync: OFF" overlay that flashes when t
 How long the Space-names popup remains on screen after a sync or after `:showNames()`. **Internal name:** `popupDuration`. Default 2 s.
 
 ### Status HUD duration
-How long the Status HUD banner stays visible when the master switch is toggled. **Internal name:** `statusDuration`. Default 3 s. Distinct from `popupDuration` — these are two separate overlays with separate dwell times.
+Dwell time for the Status HUD overlay (see "Status HUD" entry above for what triggers it). **Internal name:** `statusDuration`. Default 3 s. Distinct from `popupDuration` — separate overlays, separate dwell times.
 
 ### Sync mode
 The two-value setting that gates the watcher: **Automatic** (SpacesSync syncs every Space change live) or **Manual** (displays move freely; the user invokes Sync now to bring the group together). Independent of the master Enable toggle.
 
 ### Sync now
 The user-invoked action that switches the cursor display's group to the cursor display's current Space. Hotkey ⌃⌥⌘S by default. Scope is the cursor display's group only — other groups stay where they are.
+
+**Casing:** sentence-case "Sync now" in narrative prose; **title-case "Sync Now"** in UI labels (button text, hotkey-row label, action references that read as button names). Both forms are canonical. Same convention applies to "Open Settings" / "open settings" and "Open Space picker".
 
 ### Space picker
 The interactive overlay that lists the cursor display's Spaces by index and name and lets the user keyboard-navigate to one. Hotkey ⌃⌥⌘N by default. Internally `:showNames()`. Distinct from the **Space-names popup** (auto-dismisses after `popupDuration`); the picker has its own dwell.
