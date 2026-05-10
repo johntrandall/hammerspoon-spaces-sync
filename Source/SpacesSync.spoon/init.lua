@@ -224,6 +224,10 @@ local state = {
   chainTimers = {},       -- list of all chain-owned hs.timer handles
   watchdogTimer = nil,    -- safety timer (also lives in chainTimers)
 
+  -- v3 screen-watcher path (item 3)
+  screenWatcher = nil,                -- hs.screen.watcher handle
+  screenReconfigDebounceTimer = nil,  -- coalesces screen-watcher bursts (SW_DEBOUNCE)
+
   osBlocked = false,
   lastVerifierResult = nil,  -- { timestamp, mismatches } for :status() (item 10)
 }
@@ -1382,6 +1386,114 @@ local function stopWatcher()
 end
 
 -- ============================================================================
+-- SCREEN WATCHER — second entry path (item 3)
+-- ============================================================================
+--
+-- hs.screen.watcher fires on display layout changes — monitor plug/unplug,
+-- lid open/close, dock/undock, displays rearranged in System Settings,
+-- resolution change. Without this entry path, those events are silent and
+-- the position map goes stale.
+--
+-- The screen watcher fires 2-5x per real reconfig event as macOS settles
+-- geometry; SW_DEBOUNCE coalesces the burst into one rebuild via a 250 ms
+-- doAfter that is cancelled and re-armed on subsequent fires.
+--
+-- On debounced fire (when re-armed expires):
+--   1. BAIL_CHAIN any in-flight sync (bump chainGeneration, drain timers,
+--      refresh baseline, syncInProgress = false LAST).
+--   2. rebuildPositionMap() — re-sort screens by frame.
+--   3. Refresh state.lastActiveSpaces from current activeSpaces.
+--   4. Validate obj.syncGroups against new totalScreens — log warning
+--      per out-of-range position.
+--   5. Show status HUD: "SpacesSync: display layout changed".
+
+local SW_DEBOUNCE_S = 0.250
+
+local function bailChain(reason)
+  -- Mirrors :stop() ordering, but stays enabled. Used by the screen watcher
+  -- to abort an in-flight chain when the display layout changes underneath
+  -- it. Targets may have just disappeared or shifted positions.
+  state.chainGeneration = state.chainGeneration + 1
+  cancelChainTimers()
+  state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+  state.syncInProgress = false
+  obj.logger.i("BAIL_CHAIN: " .. tostring(reason))
+end
+
+local function handleScreenReconfig()
+  if not state.enabled then return end
+
+  obj.logger.i("Display layout changed; rebuilding")
+
+  -- 1. Bail any in-flight chain.
+  if state.syncInProgress then
+    bailChain("display reconfig")
+  end
+
+  -- 2. Rebuild position map.
+  rebuildPositionMap()
+  obj.logger.i("Screens (" .. totalScreens .. ", reading order):")
+  for pos = 1, totalScreens do
+    local uuid = positionToUUID[pos]
+    if uuid then
+      obj.logger.i("  position " .. pos .. ": " .. getDisplayLabel(uuid))
+    end
+  end
+
+  -- 3. Refresh baseline.
+  state.lastActiveSpaces = hs.spaces.activeSpaces() or {}
+
+  -- 4. Validate syncGroups against new layout.
+  if type(obj.syncGroups) == "table" then
+    for gi, group in ipairs(obj.syncGroups) do
+      if type(group) == "table" then
+        for _, pos in ipairs(group) do
+          if type(pos) == "number" and pos > totalScreens then
+            obj.logger.w("syncGroups[" .. gi .. "] references position " ..
+                         pos .. " but only " .. totalScreens ..
+                         " displays connected")
+          end
+        end
+      end
+    end
+  end
+
+  -- 5. Status HUD.
+  showStatusHUD("SpacesSync: display layout changed")
+end
+
+local function setupScreenWatcher()
+  if state.screenWatcher then
+    state.screenWatcher:stop()
+  end
+  state.screenWatcher = hs.screen.watcher.new(function()
+    -- SW_DEBOUNCE: re-arm a 250 ms timer on each fire. Coalesces the
+    -- 2-5x bursts macOS produces during a real reconfig.
+    if state.screenReconfigDebounceTimer then
+      state.screenReconfigDebounceTimer:stop()
+    end
+    state.screenReconfigDebounceTimer = hs.timer.doAfter(SW_DEBOUNCE_S, function()
+      state.screenReconfigDebounceTimer = nil
+      handleScreenReconfig()
+    end)
+  end)
+  state.screenWatcher:start()
+  obj.logger.d("Screen watcher started")
+end
+
+local function stopScreenWatcher()
+  if state.screenReconfigDebounceTimer then
+    state.screenReconfigDebounceTimer:stop()
+    state.screenReconfigDebounceTimer = nil
+  end
+  if state.screenWatcher then
+    state.screenWatcher:stop()
+    state.screenWatcher = nil
+    obj.logger.d("Screen watcher stopped")
+  end
+end
+
+-- ============================================================================
 -- ENVIRONMENT CHECKS
 -- ============================================================================
 
@@ -1602,6 +1714,7 @@ function obj:start()
   -- removing a redundant assignment here closes a race where a user swipe
   -- between the two writes was silently absorbed).
   setupWatcher()
+  setupScreenWatcher()
   -- Defer the status HUD to the next runloop tick. When :start() is called
   -- from init.lua (e.g. after hs.reload()), Hammerspoon has not yet finished
   -- applicationDidFinishLaunching — canvases created synchronously at this
@@ -1646,6 +1759,7 @@ function obj:stop()
 
   -- 5. Stop the spaces watcher (no more new fires after this).
   stopWatcher()
+  stopScreenWatcher()
 
   -- 6. Disable LAST.
   state.enabled = false
