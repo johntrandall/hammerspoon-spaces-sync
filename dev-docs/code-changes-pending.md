@@ -365,9 +365,13 @@ Optional: extract a `refreshBaseline()` or `setBaseline(uuid, spaceID)` helper.
 
 ## Post-v3 hardening (defer until v3 lands and is stable)
 
-### 10. 🛠 `:status()` method for diagnostics
+### 10. 🛠 `:status()` method for diagnostics — ✅ DONE (v0.3)
 
-Single CLI call returns `enabled`, `osBlocked`, `syncInProgress`, position map, last sync timestamp. Nice for debugging.
+Shipped with 12 keys (broader than this stub's original 5). Canonical
+spec lives in `dev-docs/test-strategy.md` § L3 Contract Spec; the
+authoritative implementation is `obj:status()` in
+`Source/SpacesSync.spoon/init.lua`. Original stub intent was met and
+exceeded.
 
 ---
 

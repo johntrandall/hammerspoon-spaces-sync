@@ -1,6 +1,20 @@
 # SpacesSync v3 — Implementation Handoff
 
-**Audience:** an engineer (or fresh AI agent) who will implement v3. You have not seen the design conversation. You know Lua and Hammerspoon basics; you have not worked in this codebase.
+> **Status: ARCHIVAL (2026-05-10).** v3 shipped as v0.3 (tag `v0.3`,
+> commit `af5097e`). This document is preserved as the historical
+> record of how v3 was planned and built. Build-order instructions in
+> §3 and "Stage 0" / "run against v0.2 first" imperatives below are
+> historical context, not active todos.
+>
+> For current-state documentation see:
+> - Code: `Source/SpacesSync.spoon/init.lua` (v0.3)
+> - Test strategy: `dev-docs/test-strategy.md`
+> - Manual checklist: `dev-docs/manual-test-checklist.md` (v0.2/v3 columns both filled in)
+> - Item status: `dev-docs/code-changes-pending.md` (all items ✅ except where explicitly deferred)
+
+**Audience:** an engineer (or fresh AI agent) who reads this AFTER v3
+shipped, looking to understand the design decisions and trace items
+to code. You know Lua and Hammerspoon basics.
 
 **Reading order — read these files in this order before writing any code:**
 

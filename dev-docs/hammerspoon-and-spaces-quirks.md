@@ -25,7 +25,16 @@ If you need to verify, either:
 
 If you call `gotoSpace()` for multiple monitors in a tight loop, macOS will silently drop some of the calls. The first switch works, subsequent ones don't — no error, no callback, just nothing happens.
 
-**Fix:** Chain calls with a delay between each one. 300ms works reliably in testing.
+**Fix:** Chain calls with a delay between each one. 300ms works reliably as a general-Hammerspoon recommendation.
+
+> **SpacesSync-specific update (v3 / F-010):** For SpacesSync's
+> particular use case (back-to-back `gotoSpace` calls after observing
+> `activeSpaceOnScreen` flip), F-010 confirmed Model B holds on macOS
+> 15.7.5 — polling the flip is a sufficient ready signal and 0 drops
+> were observed at gap=0 across 160 trials. The 300 ms recommendation
+> above is still a safe default for general use; SpacesSync replaces
+> it with poll-based verification (see `dev-docs/findings/F-010-polling-model-a-vs-b.md`
+> and `dev-docs/test-strategy.md` § Operational Notes).
 
 ```lua
 -- BAD: second call gets dropped

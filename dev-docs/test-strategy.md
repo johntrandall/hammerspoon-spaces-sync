@@ -35,8 +35,8 @@ get tightened to specific commands.
 canonical statement of order — Active Levels table rows happen to be
 listed in this order as a convenience but are not load-bearing.
 
-Until then, automated coverage is the empty set; verification falls
-back to `dev-docs/manual-test-checklist.md` (30 scenarios).
+Until then, no automated tests exist yet; verification falls back to
+`dev-docs/manual-test-checklist.md` (30 scenarios).
 
 ## Project Context
 
@@ -76,14 +76,15 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 | **L3** — Contract | ✅ Active | Public API surface is small and stable: `:start`, `:stop`, `:status`, `:isEnabled`, `:toggle`, `:bindHotkeys`, `:showNames`, `:renameCurrentSpace`. Asserts methods exist with correct types and `:status()` returns the spec'd 12-key shape (see L3 Contract Spec below). Does NOT verify chaining (`return self`) — that would require calling stateful methods on the live Spoon. Test ASSUMES Spoon is already `:start()`-ed; SKIPs with an actionable message if not. Does NOT itself call `:start()` or `:stop()`. Runs inside Hammerspoon via `hs -c`; does NOT require multiple displays — single-display hosts get degenerate values (e.g. `positionMap = {[1] = uuid}`) but shape/type checks still pass. | `tests/run.sh L3` |
 | **L4** — Workflow | 🔄 Not yet | Multi-component user stories don't apply to a single-file Spoon. | (n/a) |
 | **L5** — E2E mocked | 🔄 Not yet | Mocking `hs.spaces.*` from inside Hammerspoon is possible but high-cost; the conceptual gap to L6 is small (just the actual `gotoSpace`). | (n/a) |
-| **L6** — E2E live | ✅ Active | The actual sync engine: dispatch → poll → verify → CLEAR. Runs inside Hammerspoon on a multi-display host. Drives a known `gotoSpace`, asserts on `state.lastVerifierResult.mismatches == {}` via `:status()`. **Will briefly switch Spaces on the test host's displays** (duration: `numTargets × pollTimeout + safety_margin`; see Operational Notes). See L6 Sub-Tiers section below for sub-tier breakdown. | `tests/run.sh L6` |
+| **L6** — E2E live | ✅ Active | The actual sync engine: dispatch → poll → verify → CLEAR. Runs inside Hammerspoon on a multi-display host. Drives a known `gotoSpace`, asserts on `state.lastVerifierResult.mismatches == {}` via `:status()`. **Will briefly switch Spaces on the test host's displays** (duration: see Operational Notes § SLEEP_BETWEEN sizing). See L6 Sub-Tiers section below for sub-tier breakdown. | `tests/run.sh L6` |
 | **L7** — Browser | ❌ N/A | No web UI. |
 | **L8** — GUI | 🔄 Not yet | Could verify popup canvas appearance via screenshot diffing. Overkill for a 4-row `hs.canvas` popup. |
 
 ## L3 Contract Spec
 
 The `:status()` return shape (12 keys; canonical authority is `obj:status()`
-in `Source/SpacesSync.spoon/init.lua`):
+in `Source/SpacesSync.spoon/init.lua` — if that method changes, this
+table must be updated alongside the L3 test):
 
 | Key | Type | Notes |
 |---|---|---|
@@ -96,7 +97,7 @@ in `Source/SpacesSync.spoon/init.lua`):
 | `positionMap` | table | shallow copy of position → UUID |
 | `syncGroups` | table | shallow copy of `obj.syncGroups` |
 | `lastActiveSpaces` | table | shallow copy of UUID → SpaceID baseline |
-| `lastVerifierResult` | table or nil | `{ timestamp, mismatches }`; each `mismatches[i] = { uuid, kind, expectedIdx, actualIdx }` where `kind` is `"wrong-space"` / `"vanished"` / `"appeared"`; nil if no chain has run |
+| `lastVerifierResult` | table or nil | `{ timestamp, mismatches }`; each `mismatches[i]` has `{ uuid, kind }` where `kind` is `"wrong-space"` / `"vanished"` / `"appeared"`; entries with `kind == "wrong-space"` additionally have `expectedIdx` and `actualIdx` fields (other kinds do NOT have them — assert conditionally). Whole record is nil if no chain has run. |
 | `pollTimeout` | number | current `obj.pollTimeout` |
 | `pollInterval` | number | current `obj.pollInterval` |
 
@@ -209,12 +210,13 @@ in Deviations §6 below.
    planned framework.
 2. **L0 included in `_inclusive` chains.** The canonical conftest
    reference (`local-testing-strategy/SKILL.md`) defines `_LEVELS`
-   starting at L1, excluding L0 from `_inclusive` expansion. The
-   canonical runner-table in `testing-policy/SKILL.md` includes L0 in
-   `L1_inclusive` (the two canonical sources disagree). SpacesSync
-   follows the runner-table convention — L0 is fast, headless, and
-   always relevant — and implements cumulative semantics in shell
-   rather than via pytest marker expressions.
+   starting at L1 — the conftest silently omits L0 from `_inclusive`
+   expansion rather than taking an explicit position. The canonical
+   runner-table in `testing-policy/SKILL.md` explicitly includes L0
+   in `L1_inclusive`. SpacesSync follows the runner-table convention
+   — L0 is fast, headless, and always relevant — and implements
+   cumulative semantics in shell rather than via pytest marker
+   expressions.
 3. **L6 restore via real `gotoSpace`, not internal snapshot.** The L6
    test stashes pre-test active SpaceIDs at probe time and, after
    assert, dispatches `hs.spaces.gotoSpace(triggerStart)` to drive
@@ -229,13 +231,15 @@ in Deviations §6 below.
    fire-and-forget; the test does NOT assert on its outcome and
    restore failure does NOT count as test failure.
 4. **Gating defaults adapted to the active set.** Canonical defaults
-   per `ac-testing-policy/SKILL.md` are pre-commit L0+L1+L2 (the
-   quick-reference subset in `testing-policy/SKILL.md` shows the same
-   gating table omitting L0; the SKILL.md is the authoritative one for
-   level inclusion). Pre-merge is L3+L4 with L5 conditional on D2
-   strategy; pre-deploy is L6. SpacesSync has no active L1/L2/L4/L5,
-   so the project's gating is L0 → L3_inclusive → L6_inclusive. This
-   is a substantive deviation, not just a tooling difference.
+   per `ac-testing-policy/SKILL.md` § Gating Policy are pre-commit
+   L0+L1+L2; the quick-reference subset at `~/.claude/skills/testing-policy/SKILL.md`
+   shows the same table with L0 omitted (the quick-ref is explicitly
+   "a subset" per its own header, so `ac-testing-policy/SKILL.md` is
+   the higher authority on level inclusion). Pre-merge is L3+L4 with
+   L5 conditional on D2 strategy; pre-deploy is L6. SpacesSync has no
+   active L1/L2/L4/L5, so the project's gating is L0 → L3_inclusive
+   → L6_inclusive. This is a substantive deviation, not just a
+   tooling difference.
 5. **L6 runs against the live Hammerspoon, not a sandbox.** Canonical
    policy requires L6 to run in an isolated instance ("minimum
    isolation: dedicated instance of the external system"). macOS does
@@ -254,8 +258,8 @@ in Deviations §6 below.
    assigned by a human (per `ac-testing-policy/SKILL.md` line 454
    "Test Lifecycle Categories (L5–L6, assigned by human)" and
    MANIFESTO.md line 678 "L5 and L6 tests have three lifecycle
-   categories"; the vocabulary file defines the terms but does not
-   scope them). SpacesSync applies the same vocabulary to L0/L3 tests
+   categories, assigned by the human"; the vocabulary file defines
+   the terms but does not scope them). SpacesSync applies the same vocabulary to L0/L3 tests
    (all currently "permanent"). Harmless extension; flagged so a
    future reader doesn't mistake it for canonical alignment.
 
@@ -363,7 +367,7 @@ exists and benefits from `make test` semantics.
 
 ## References
 
-- This project: `dev-docs/manual-test-checklist.md` — 30-scenario manual checklist
+- This project: `dev-docs/manual-test-checklist.md` — manual test checklist (count lives in Status section)
 - This project: `dev-docs/hammerspoon-and-spaces-quirks.md` — mirrors the `hs -c` runloop note
 
 Canonical sources are listed at the top of this document.
