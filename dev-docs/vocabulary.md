@@ -79,9 +79,10 @@ SpacesSync operates entirely on indices, never on Space IDs across displays. "Sp
 ### Workspace
 The unified state across all displays in a sync group at one Space index. When sync group {2, 3, 4} is at index 1, that's **one workspace** — three physical Spaces (one per display) that move together and represent a single conceptual work context.
 
-**This is the thing users name.** "Code" is a workspace name. It refers to index 1 across the sync group, not to a specific Space on a specific display.
+**This is the thing users name.** "Code" is a workspace name. It refers to index 1 across the sync group, not to a specific Space on a specific display. The Rename hotkey (⌃⌥⌘R by default) names a workspace, **never** a Space — saying "Rename current Space" would imply the name applies to one display only, which it doesn't.
 
 - **Example:** `workspaceNames = { [1] = "Code", [2] = "Email", [3] = "Browser" }`
+- **Implementation note:** the existing `:renameCurrentSpace()` method name predates this vocabulary alignment. Future rename: `:renameCurrentWorkspace()`. User-facing labels already use "workspace".
 
 ### Switch delay
 The pause between consecutive Space switches when SpacesSync is moving multiple displays. macOS silently drops rapid back-to-back calls; the delay gives each one time to be accepted. Default: 0.3s.
@@ -163,6 +164,8 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 | Monitor | Display | Consistency with macOS and the rest of the codebase. |
 | Active display / active Space | Cursor display / current Space | Two ways to say one thing. The cursor display × current Space pair covers every user-action reference; "active" introduces a third overlapping concept and breeds drift. |
 | Space name | Workspace name | Workspace is the cross-display concept; "Space" implies one display only. |
+| "Rename current Space" / "name the current Space" (in user UI) | "Rename current workspace" / "name the current workspace" | The name applies to one Space *index* across the whole sync group, not to one display's Space. That's a workspace. |
+| "Rename / name the sync group" | "Rename current workspace" | A sync group has *N* workspaces (one per Space index). Renaming names just the workspace at the current index, not the whole group. |
 | Trigger / target (in user copy) | Cursor display, or "the group" / "the rest of the group" | Internal only. |
 | Sibling (in user copy) | The rest of the group | Internal only. |
 | Watcher (in user copy) | "SpacesSync mirrors…" or "automatic sync mode" | Internal only. |
