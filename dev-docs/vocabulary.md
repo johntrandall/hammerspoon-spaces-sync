@@ -5,7 +5,7 @@ Canonical terms used throughout the SpacesSync codebase and documentation. **Two
 - **User-facing terms** appear in the settings pane, tooltips, hotkey descriptions, status HUD copy, README, and any prose aimed at end users.
 - **Internal terms** appear in source code identifiers, code comments, ADRs, design diagrams, and developer-facing docs.
 
-Some concepts have both a user-facing and internal name (e.g. "Workspace" vs `workspaceNames`); some are user-only (e.g. "Display set"); some are internal-only and **must not leak** into user copy (e.g. "trigger", "watcher", "sibling"). When in doubt, prefer the canonical user-facing name in any prose users will read.
+Some concepts have both a user-facing and internal name (e.g. "Sync group" vs `groupOf`); some are user-only (e.g. "Group N" labels rendered from display order); some are internal-only and **must not leak** into user copy (e.g. "trigger", "watcher", "sibling"). When in doubt, prefer the canonical user-facing name in any prose users will read.
 
 ## Quick matrix
 
@@ -15,8 +15,9 @@ Some concepts have both a user-facing and internal name (e.g. "Workspace" vs `wo
 | Position number  | position, `pos` | — |
 | Cursor display   | `cursorScreen` (`hs.mouse.getCurrentScreen()`) | — |
 | Current Space    | current Space, `activeSpaceOnScreen()` | — |
-| Sync group       | sync group, `syncGroups`, `groupOf` | — |
-| Display set      | (not modeled in code) | — |
+| Sync group       | sync group, `syncGroups`, `groupOf`; **opaque ID** `grp_xxxxxx` | — |
+| Group N (label)  | derived label from display order; not stored | — |
+| Display set ＊roadmap＊ | (not modeled in code) | — |
 | Space            | space, `spaceID` | — |
 | Space index      | space index, `spaceIndex` | — |
 | Workspace        | workspace, `workspaceNames` | — |
@@ -64,6 +65,8 @@ A group of displays that share Space indices. When any display in a sync group s
 
 Displays not in any sync group are **independent** — SpacesSync never moves them.
 
+**Identity vs. label:** every group has a stable opaque ID (`grp_a8x2k0`) that survives reshuffles, deletions, and reorderings. The user-facing label ("Group 1", "Group 2") is *derived* from display order at render time. Group letters (A, B, C) used in earlier mockups have been dropped — they reshuffled on changes and would have created instability when groups gain metadata in v2. **Always store and reference groups by their ID; render numbers only.**
+
 ### Display set ＊roadmap, not in v1＊
 A physical arrangement of displays. Think "my home desk" vs "my office desk" — different hardware, different number of monitors, different layouts. **The current Spoon does not model display sets.** This entry exists to reserve the term for a future feature where the user could keep multiple `groupOf` configurations and switch between them when their hardware setup changes. Do not surface "display set" in any user-facing copy until that feature exists — using the term now misleads users into expecting profile switching.
 
@@ -77,13 +80,12 @@ The ordinal position (1-based) of a Space within a display's Space list. Index 1
 
 SpacesSync operates entirely on indices, never on Space IDs across displays. "Space 2 on display A" and "Space 2 on display B" are different macOS Spaces with different IDs, but they share index 2 — SpacesSync guarantees they're visited together.
 
-### Workspace
-The unified state across all displays in a sync group at one Space index. When sync group {2, 3, 4} is at index 1, that's **one workspace** — three physical Spaces (one per display) that move together and represent a single conceptual work context.
+### Space-name scope
+**Names propagate across the sync group.** When the user names "Space 2" on any display in sync group `{2, 3, 4}`, every display in that group sees the same name at index 2. The name is keyed by *(group ID, Space index)* and stored in `spaceNames`. There is no separate "workspace" noun — the cross-display nature of names is a *property of being in a sync group*, not a thing that needs its own term.
 
-**This is the thing users name.** "Code" is a workspace name. It refers to index 1 across the sync group, not to a specific Space on a specific display. The Rename hotkey (⌃⌥⌘R by default) names a workspace, **never** a Space — saying "Rename current Space" would imply the name applies to one display only, which it doesn't.
-
-- **Example:** `workspaceNames = { [1] = "Code", [2] = "Email", [3] = "Browser" }`
-- **Implementation note:** the existing `:renameCurrentSpace()` method name predates this vocabulary alignment. Future rename: `:renameCurrentWorkspace()`. User-facing labels already use "workspace".
+- **Example:** `spaceNames = { ["grp_a8x2k0"] = { [1] = "Code", [2] = "Email" } }`
+- **User-facing copy** says "Rename current Space" with the sublabel making the cross-display behavior explicit ("Names this Space across the sync group — every display in the group sees the same name at this index").
+- **Why no "workspace" term?** Earlier vocab drafts introduced "workspace" for this concept. Council review found it was an over-promoted abstraction: the term implied a UI artifact (a Workspaces list) that didn't exist, and asked users to learn a noun whose only payoff was precision they could derive from "I'm in a sync group, names propagate." Reverted. The internal field stays named `spaceNames` — no `workspaceNames` rename.
 
 ### Switch delay
 The pause between consecutive Space switches when SpacesSync is moving multiple displays. macOS silently drops rapid back-to-back calls; the delay gives each one time to be accepted. Default: 0.3s.
@@ -97,7 +99,7 @@ The waiting period after a sync completes before SpacesSync resumes reacting to 
 The single-line "SpacesSync: ON" / "SpacesSync: OFF" overlay that flashes when the master toggle changes state. **Distinct from the Space-names popup** — the popup is the multi-row panel showing each Space's index and name; the HUD is the wider, centered, one-line status banner.
 
 ### Sync mode
-The two-value setting that gates the watcher: **Automatic** (SpacesSync mirrors every Space change live) or **On demand only** (displays move freely; the user invokes Sync now to switch the group together). Independent of the master Enable toggle.
+The two-value setting that gates the watcher: **Automatic** (SpacesSync syncs every Space change live) or **Manual** (displays move freely; the user invokes Sync now to bring the group together). Independent of the master Enable toggle.
 
 ### Sync now
 The user-invoked action that switches the cursor display's group to the cursor display's current Space. Hotkey ⌃⌥⌘S by default. Scope is the cursor display's group only — other groups stay where they are.
@@ -118,6 +120,8 @@ These terms are for source code, ADRs, design diagrams, code review, and develop
 The display whose Space change was first detected by the watcher. The engine identifies the trigger inside the watcher callback by diffing `lastActiveSpaces` against the current snapshot.
 
 **Do not surface to users.** When a user *invokes* an action, the parallel concept is "cursor display". When the engine *detects* a change, the user doesn't need to know which display the engine considered the trigger — they just see the resulting sync.
+
+**Decision (post-council):** The console log `obj.logger.i("SYNC: <name> (trigger) ...")` is the only place "trigger" surfaces, and only in the Hammerspoon console which is power-user-debugging territory. **No user-facing parallel term will be coined.** Coining "source display" or similar would add vocabulary surface without adding clarity for users (who already have "cursor display" for the user-invoked-action case). Console logs use "trigger" as the engine-internal narrative term.
 
 ### Target (display)
 A display that gets switched to match the trigger. In a sync group of N displays, one Space change produces one trigger and N-1 targets.
@@ -167,9 +171,9 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 |---|---|---|
 | Monitor | Display | Consistency with macOS and the rest of the codebase. |
 | Active display / active Space | Cursor display / current Space | Two ways to say one thing. The cursor display × current Space pair covers every user-action reference; "active" introduces a third overlapping concept and breeds drift. |
-| Space name | Workspace name | Workspace is the cross-display concept; "Space" implies one display only. |
-| "Rename current Space" / "name the current Space" (in user UI) | "Rename current workspace" / "name the current workspace" | The name applies to one Space *index* across the whole sync group, not to one display's Space. That's a workspace. |
-| "Rename / name the sync group" | "Rename current workspace" | A sync group has *N* workspaces (one per Space index). Renaming names just the workspace at the current index, not the whole group. |
+| "Workspace" (any sense) | "Space" with cross-display copy in sublabel | Earlier vocab introduced "workspace" for "the named state across a sync group at one index." Council review found it was an over-promoted abstraction (no UI artifact, asks users to learn a noun whose only payoff is precision). Dropped. The internal field stays `spaceNames` keyed by group ID + index. |
+| "Rename / name the sync group" | "Rename current Space" with sublabel "Names this Space across the sync group" | A sync group has many named Spaces (one per index). Renaming names just the current Space — and that name propagates across the group automatically because it's keyed `(group ID, index)`. |
+| "Group A / B / C" labels | "Group 1 / 2 / 3" | Letters were derived from sort order and reshuffled on changes. Numbers are derived from display order and feel stable. Identity is the opaque `grp_xxxxxx` ID, not the label. |
 | Trigger / target (in user copy) | Cursor display, or "the group" / "the rest of the group" | Internal only. |
 | Sibling (in user copy) | The rest of the group | Internal only. |
 | Watcher (in user copy) | "SpacesSync mirrors…" or "automatic sync mode" | Internal only. |
