@@ -341,6 +341,72 @@
     color: var(--text-tertiary);
   }
 
+  /* Group Labels — one row per letter A..J. Editable label input,
+     member count on the right. The pool is fixed; labels are sparse
+     (groupLabels: { "A": "Code" } only contains entries the user set). */
+  .label-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--panel-stroke);
+  }
+  .label-row:last-child { border-bottom: none; }
+  .label-row .letter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .label-row .letter .chip {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+  }
+  .label-row .letter .chip.none {
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.30);
+  }
+  .label-row input.label-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 5px;
+    color: var(--text-primary);
+    padding: 4px 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .label-row input.label-input::placeholder {
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+  .label-row input.label-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    background: rgba(10, 132, 255, 0.06);
+  }
+  .label-row .member-count {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    text-align: right;
+    min-width: 80px;
+  }
+  .label-row.dim { opacity: 0.55; }
+  .label-row .show-more {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px;
+  }
+
   /* Hotkeys section — one row per bindable action.
      Each row: action label + sublabel + kbd cell + reset link.
      The kbd cell is the macOS-style editable shortcut button:
@@ -688,9 +754,10 @@
       </div>
 
       <!-- ============================================================
-           Group Membership — per-display assignment, no separate
-           "groups" list. Groups are implicit: created via the dropdown
-           "+ New group" item, dissolved when their last member leaves.
+           Group Membership — per-display assignment from a fixed pool
+           of 10 groups (A through J). All 10 always exist; users
+           assign positions to whichever letter they want. Empty groups
+           remain in the pool, inert.
            ============================================================ -->
       <h3>Group Membership</h3>
       <div class="section-hint">
@@ -702,7 +769,7 @@
           <div class="pos">position 1</div>
           <div class="display-name">LG SDQHD #1</div>
           <div class="group-select">
-            <span class="chip a"></span><span>Group A</span>
+            <span class="chip a"></span><span>A: Code</span>
             <span class="caret">▾</span>
           </div>
         </div>
@@ -710,13 +777,14 @@
           <div class="pos">position 2</div>
           <div class="display-name">LG SDQHD #2</div>
           <div class="group-select">
-            <span class="chip a"></span><span>Group A</span>
+            <span class="chip a"></span><span>A: Code</span>
             <span class="caret">▾</span>
           </div>
         </div>
-        <!-- Position 3 demonstrates the dropdown OPEN so the option
-             layout is visible. The list shows current groups (with
-             member counts), then a divider, then "+ New group (C)". -->
+        <!-- Position 3 demonstrates the dropdown OPEN. The list shows
+             "— None", then groups currently in use (member counts),
+             a divider, then unused groups (collapsed at bottom). All
+             10 letters are always available; no "+ New group" needed. -->
         <div class="group-row">
           <div class="pos">position 3</div>
           <div class="display-name">LG SDQHD #3</div>
@@ -725,6 +793,9 @@
             <span style="color: var(--text-tertiary)">— None</span>
             <span class="caret" style="color: var(--accent-blue)">▴</span>
           </div>
+          <!-- Pool of 10 letters always exists (A-J). Labeled groups
+               show their label after the letter; unlabeled show
+               "Group X". Empty groups (no members) appear at the end. -->
           <div class="menu" role="menu">
             <div class="menu-item selected">
               <span class="checkmark">✓</span>
@@ -734,7 +805,7 @@
             <div class="menu-item">
               <span class="checkmark"></span>
               <span class="chip a"></span>
-              <span>Group A <span class="members">— positions 1, 2</span></span>
+              <span>A: Code <span class="members">— positions 1, 2</span></span>
             </div>
             <div class="menu-item">
               <span class="checkmark"></span>
@@ -742,10 +813,20 @@
               <span>Group B <span class="members">— position 4</span></span>
             </div>
             <div class="menu-divider"></div>
-            <div class="menu-item create">
+            <div class="menu-item">
               <span class="checkmark"></span>
-              <span class="chip"></span>
-              <span>+ New group</span>
+              <span class="chip c"></span>
+              <span>C: Reference <span class="members">— empty</span></span>
+            </div>
+            <div class="menu-item">
+              <span class="checkmark"></span>
+              <span class="chip d"></span>
+              <span>Group D <span class="members">— empty</span></span>
+            </div>
+            <div class="menu-item" style="color: var(--text-tertiary)">
+              <span class="checkmark"></span>
+              <span class="chip none"></span>
+              <span>Groups E – J <span class="members">— empty</span></span>
             </div>
           </div>
         </div>
@@ -771,8 +852,48 @@
         </div>
       </div>
       <div class="footnote" style="margin-top: 10px;">
-        Groups are created implicitly by assigning a display to <em>+ New group</em>.
-        When the last member leaves a group, the group disappears on Apply.
+        Ten groups (A–J) always exist. Assign a position to use a group;
+        leaving a group empty removes its members but keeps the slot
+        available. Set an optional label below.
+      </div>
+
+      <!-- ============================================================
+           Group Labels — one editable label per letter A..J. Sparse:
+           a labeled group renders as "A: Code" in the dropdown; an
+           unlabeled group renders as "Group A". Empty groups dim
+           visually but stay editable so the user can pre-label
+           before assigning members.
+           ============================================================ -->
+      <h3>Group Labels</h3>
+      <div class="section-hint">
+        Optional. Labeled groups display as "Letter: Label" in the
+        membership dropdown. Letters are stable IDs; labels are
+        display-only.
+      </div>
+      <div class="inset">
+        <div class="label-row">
+          <span class="letter"><span class="chip a"></span>A</span>
+          <input class="label-input" type="text" value="Code">
+          <span class="member-count">2 displays</span>
+        </div>
+        <div class="label-row">
+          <span class="letter"><span class="chip b"></span>B</span>
+          <input class="label-input" type="text" value="" placeholder="No label — displays as “Group B”">
+          <span class="member-count">1 display</span>
+        </div>
+        <div class="label-row dim">
+          <span class="letter"><span class="chip c"></span>C</span>
+          <input class="label-input" type="text" value="Reference" placeholder="No label">
+          <span class="member-count">empty</span>
+        </div>
+        <div class="label-row dim">
+          <span class="letter"><span class="chip d"></span>D</span>
+          <input class="label-input" type="text" value="" placeholder="No label">
+          <span class="member-count">empty</span>
+        </div>
+        <div class="label-row">
+          <div class="show-more">▾ Show 6 more groups (E – J)</div>
+        </div>
       </div>
 
       <!-- ============================================================
@@ -963,19 +1084,22 @@
     assignment. UUID lives in the inventory only, where it disambiguates
     identical models.
 
-    <h4>Groups are implicit</h4>
-    There's no separate "list of groups" — only a list of <em>displays</em>
-    and what each is assigned to. Groups come into existence when a
-    display picks <em>+ New group</em> and dissolve when the last member
-    leaves. No "create empty group" affordance, no orphans.
+    <h4>Fixed pool of 10 groups</h4>
+    Groups aren't created or destroyed. The pool of 10 letters (A
+    through J) always exists; users just decide which to populate.
+    Empty groups remain in the pool and can hold a label even with
+    no members. This sidesteps a class of lifecycle bugs (no "next
+    unused letter," no retirement state, no dissolution events) and
+    matches the realistic ceiling — Mac Studio Ultra tops out around
+    8 displays, so 10 is generous buffer.
 
-    <h4>Group letters are stable IDs</h4>
-    A group's letter (A, B, C …) is assigned at creation and never
-    reshuffles or recycles. Delete Group A → "A" is retired forever;
-    next new group is the next unused letter. The letter doubles as
-    the v1 display label ("Group A"). v2 may add a separate
-    user-set display label (e.g. "Code"), but the letter remains the
-    stable identifier internally.
+    <h4>Letter is identity, label is display</h4>
+    The letter (A, B, C …) is the stable internal ID — it appears
+    in <code>groupOf</code>, in <code>spaceNames</code> keys, and
+    everywhere internal code references a group. The label is
+    optional, user-set, and display-only — stored sparsely in
+    <code>groupLabels</code>. Labeled groups render as "A: Code";
+    unlabeled as "Group A".
 
     <h4>The single-group constraint</h4>
     Each row's selector picks <em>one</em> group or <em>None</em>. The data

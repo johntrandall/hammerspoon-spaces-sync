@@ -15,9 +15,9 @@ Some concepts have both a user-facing and internal name (e.g. "Sync group" vs `g
 | Position number  | position, `pos` | — |
 | Cursor display   | `cursorScreen` (`hs.mouse.getCurrentScreen()`) | — |
 | Current Space    | current Space, `activeSpaceOnScreen()` | — |
-| Sync group       | sync group, `syncGroups`, `groupOf`; identity is a **letter** (A, B, C …) | — |
-| Group A / B / …  | letter is the stable ID **and** the display label in v1 | — |
-| Group label (v2) | future `groupLabels` field for user-customised display name | — |
+| Sync group       | sync group, `syncGroups`, `groupOf`; identity is a **letter** from a fixed pool A–J | — |
+| Group A / B / …  | letter is both the stable ID and the default display label | — |
+| Group label      | optional user-set name in `groupLabels`, e.g. `{"A":"Code"}` displays as "A: Code" | — |
 | Display set ＊roadmap＊ | (not modeled in code) | — |
 | Space            | space, `spaceID` | — |
 | Space index      | space index, `spaceIndex` | — |
@@ -66,14 +66,11 @@ A group of displays that share Space indices. When any display in a sync group s
 
 Displays not in any sync group are **independent** — SpacesSync never moves them.
 
-**Identity:** every group has a stable letter (A, B, C …) **assigned at creation and never reshuffled or recycled**. The letter is both the persisted ID (`groupOf` values are letters) and the v1 display label ("Group A"). Earlier draft used opaque `grp_xxxxxx` IDs; reverted because letters carry the identity stably without the indirection — provided we don't reshuffle them.
+**Identity:** groups are drawn from a **fixed pool of 10 letters: A, B, C, D, E, F, G, H, I, J.** All 10 always exist; there is no creation or deletion lifecycle. A group is "in use" when one or more positions are assigned to it in `groupOf`; otherwise it's empty and inert. Empty groups remain in the pool — their letter and label persist across emptiness.
 
-**Stability rules:**
-- Creating a new group → next unused letter (A, then B, then C, even if A was deleted between). Letters do not recycle in v1; gaps are acceptable.
-- Dissolving a group (last member leaves) → letter becomes unused; will not be re-issued unless letters are exhausted.
-- Reshuffling group membership → letters do not move. Group A's positions can change, but the letter A still refers to the same group.
+**Why 10:** macOS supports up to ~8 displays in pro configurations (Mac Studio M2 Ultra). Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. So a 10-group pool covers every realistic configuration with comfortable buffer. The fixed cap also eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
 
-**Display labels (v2):** future `groupLabels` JSON field will allow user-customised labels alongside letters (e.g. `{"A": "Code"}` → display "A: Code"). v1 just shows "Group A" with the letter doubling as the label.
+**Display labels:** each group has an **optional** label in `groupLabels` (sparse map, only contains entries for labeled groups). When a label exists, it displays as "A: Code". When absent, the row shows "Group A" — the letter doubles as the default label. Labels are user-editable in the settings pane's Group Labels section.
 
 ### Display set ＊roadmap, not in v1＊
 A physical arrangement of displays. Think "my home desk" vs "my office desk" — different hardware, different number of monitors, different layouts. **The current Spoon does not model display sets.** This entry exists to reserve the term for a future feature where the user could keep multiple `groupOf` configurations and switch between them when their hardware setup changes. Do not surface "display set" in any user-facing copy until that feature exists — using the term now misleads users into expecting profile switching.
@@ -94,7 +91,7 @@ SpacesSync operates entirely on indices, never on Space IDs across displays. "Sp
 - **Example:** `spaceNames = { ["A"] = { [1] = "Code", [2] = "Email" } }` — when group A is at index 1, every display in A shows "Code".
 - **User-facing copy** says "Rename current Space" with the sublabel making the cross-display behavior explicit ("Names this Space across the sync group — every display in the group sees the same name at this index").
 - **Why no "workspace" term?** Earlier vocab drafts introduced "workspace" for "the named state across a sync group at one index." Council review found it was an over-promoted abstraction: the term implied a UI artifact (a Workspaces list) that didn't exist, and asked users to learn a noun whose only payoff was precision they could derive from "I'm in a sync group, names propagate." Reverted. The internal field stays named `spaceNames` — no `workspaceNames` rename.
-- **What about renaming a group?** v1 has no group-rename action — group labels are auto-generated from the letter ("Group A"). v2 may add a `groupLabels` field for user-customised display names; that would be a *separate* rename action from "Rename current Space".
+- **What about renaming a group?** v1 has a Group Labels section in the settings pane that lets users set an optional label per group (`groupLabels: {"A": "Code"}`). This is a *separate* surface from "Rename current Space" — labels target the group letter; Space names target the (group, index) tuple.
 
 ### Switch delay
 The pause between consecutive Space switches when SpacesSync is moving multiple displays. macOS silently drops rapid back-to-back calls; the delay gives each one time to be accepted. Default: 0.3s.
@@ -182,7 +179,7 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 | Active display / active Space | Cursor display / current Space | Two ways to say one thing. The cursor display × current Space pair covers every user-action reference; "active" introduces a third overlapping concept and breeds drift. |
 | "Workspace" (any sense) | "Space" with cross-display copy in sublabel | Earlier vocab introduced "workspace" for "the named state across a sync group at one index." Council review found it was an over-promoted abstraction (no UI artifact, asks users to learn a noun whose only payoff is precision). Dropped. The internal field stays `spaceNames` keyed by group ID + index. |
 | "Rename / name the sync group" | "Rename current Space" with sublabel "Names this Space across the sync group" | A sync group has many named Spaces (one per index). Renaming names just the current Space — and that name propagates across the group automatically because it's keyed `(group ID, index)`. |
-| "Rename current group" (in v1 user UI) | "Rename current Space" | v1 has no group-rename action. Renaming targets the current Space (which propagates within the group). Group labels are auto-generated from the letter ("Group A") and not user-editable until v2. |
+| "Rename current group" / "rename the sync group" | (split: see right) | v1 has *two* surfaces for naming. **"Rename current Space"** targets the current Space; the name is keyed `(group, index)` and propagates within the group. **"Group label"** in the Group Labels section sets a per-group display name. Conflating them in copy is wrong. |
 | Trigger / target (in user copy) | Cursor display, or "the group" / "the rest of the group" | Internal only. |
 | Sibling (in user copy) | The rest of the group | Internal only. |
 | Watcher (in user copy) | "SpacesSync mirrors…" or "automatic sync mode" | Internal only. |
