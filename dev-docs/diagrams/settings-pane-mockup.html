@@ -780,7 +780,7 @@
         <div>
           <div class="label">Sync mode</div>
           <div class="sublabel">
-            <strong>Automatic</strong> — the watcher mirrors every Space
+            <strong>Automatic</strong> — SpacesSync mirrors every Space
             switch across each group. <strong>On demand only</strong> —
             displays move independently; use <em>Sync Now</em> to re-align.
           </div>
@@ -794,10 +794,10 @@
         <div>
           <div class="label">Sync now</div>
           <div class="sublabel">
-            One-shot: bring the rest of the cursor display's group to its
-            current Space index. The display under the mouse cursor is
-            the trigger — same convention as <em>Open Space picker</em>
-            and <em>Rename current Space</em>. Works in either Sync mode.
+            One-shot: move the rest of the cursor's group to the cursor
+            display's current Space. Same cursor convention as
+            <em>Open Space picker</em> and <em>Rename current Space</em>.
+            Works in either Sync mode.
           </div>
         </div>
         <button class="btn-action">
@@ -830,10 +830,10 @@
           Debounce
           <button type="button" class="info-tip" aria-label="What is Debounce?" aria-expanded="false">
             <span class="info-tip__popover" role="tooltip">
-              After a sync chain completes, ignore Space-change events for
-              this many seconds. Prevents the watcher from reacting to its
-              own programmatic switches and looping. Covers the typical
-              Mission Control animation window. Default: 0.8s.
+              After a sync completes, ignore Space-change events for this
+              many seconds. Prevents SpacesSync from reacting to its own
+              switches and looping. Covers the typical Mission Control
+              animation window. Default: 0.8s.
             </span>
           </button>
         </span>
@@ -906,7 +906,7 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Sync now</div>
-            <div class="sublabel">Bring siblings in each group to the trigger display's index.</div>
+            <div class="sublabel">Move the rest of the cursor's group to the cursor display's current Space.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
           <a class="kbd-reset" title="Restore default">Reset</a>
@@ -940,9 +940,9 @@
     <h4>Two layers of "on"</h4>
     <strong>Enable SpacesSync</strong> is the master switch — governs
     rename, picker, popups, hotkeys, and sync. <strong>Sync mode</strong>
-    is independent: <em>Automatic</em> runs the watcher, <em>On demand
-    only</em> stops the watcher and leaves <em>Sync Now</em> as the way
-    to re-align displays.
+    is independent: <em>Automatic</em> mirrors Space switches live,
+    <em>On demand only</em> leaves displays free and uses <em>Sync Now</em>
+    to re-align.
 
     <h4>Autosave, no Apply</h4>
     Every change live-commits to <code>SpacesSync.json</code>, matching
