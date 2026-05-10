@@ -131,6 +131,9 @@ do
   for _, name in ipairs({
     "compareVersions", "isLegacyFlatSchema",
     "getGroupKey", "getTargetsFor", "getDisplayLabel",
+    -- nameForIndex transitively touches hs.settings via ensureNamesLoaded;
+    -- hs_stub.lua provides a real in-memory hs.settings to support this.
+    "nameForIndex",
   }) do
     M.helpers[name] = (require_upvalue(M.obj.start, name))
   end
@@ -153,6 +156,20 @@ do
     local _, ts  = debug.getupvalue(ts_closure,  ts_idx)
     return p2u, u2p, ts
   end
+
+  -- namesLoaded is the once-only flag inside ensureNamesLoaded. Tests
+  -- need to reset it between fixtures so subsequent nameForIndex
+  -- calls re-read hs.settings (otherwise we test ALL fixtures against
+  -- the FIRST seeded value).
+  local _, nl_closure, nl_idx = require_upvalue(M.obj.start, "namesLoaded")
+  function M.reset_names_loaded()
+    debug.setupvalue(nl_closure, nl_idx, false)
+  end
+
+  -- SETTINGS_KEY is the constant string used to namespace persisted
+  -- names in hs.settings. Tests need it to seed values via
+  -- hs.settings.set(SETTINGS_KEY, table).
+  M.SETTINGS_KEY = require_upvalue(M.obj.start, "SETTINGS_KEY")
 end
 
 return M

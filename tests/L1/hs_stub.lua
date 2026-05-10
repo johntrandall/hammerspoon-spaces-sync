@@ -76,12 +76,32 @@ M.application = noopNamespace()
 M.timer = noopNamespace()
 M.canvas = noopNamespace()
 M.styledtext = noopNamespace()
-M.settings = noopNamespace()
 M.dialog = noopNamespace()
 M.mouse = noopNamespace()
 M.eventtap = noopNamespace()
 M.alert = noopNamespace()
 M.drawing = noopNamespace()
+
+-- hs.settings — a real in-memory stub (not a noopNamespace) because
+-- nameForIndex / loadSpaceNames / saveSpaceNames test cases need to
+-- seed, read, and clear persisted values. Backing store is a single
+-- module-local table; tests reset it via M.settings._test_reset().
+do
+  local store = {}
+  M.settings = {}
+  function M.settings.get(key) return store[key] end
+  function M.settings.set(key, val)
+    if val == nil then store[key] = nil else store[key] = val end
+  end
+  function M.settings.clear(key) store[key] = nil end
+  -- Test helpers — not part of the real hs.settings API.
+  function M.settings._test_reset() store = {} end
+  function M.settings._test_dump()
+    local copy = {}
+    for k, v in pairs(store) do copy[k] = v end
+    return copy
+  end
+end
 M.execute = function() return "" end  -- returns "" so checkEnvironment string-coerces cleanly
 M.accessibilityState = function() return true end
 M.spoons = noopNamespace()
