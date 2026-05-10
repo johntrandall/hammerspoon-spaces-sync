@@ -25,7 +25,7 @@ under the layout described below. Current coverage:
 
 | Level | Status | Tests |
 |-------|--------|-------|
-| L0    | green  | 3 guards (syntax, docs.json, version-sync) |
+| L0    | green  | 4 guards (syntax, docs.json, version-sync, readme-links) |
 | L1    | green  | 35 unit tests across 5 helpers |
 | L3    | green  | 1 contract test (12-key `:status()` shape) |
 | L6    | green  | scenario-01-single-swipe + scenario-08-mid-chain-stop (2 of 30 manual checklist scenarios automated) |
