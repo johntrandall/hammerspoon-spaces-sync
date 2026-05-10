@@ -1,17 +1,17 @@
 --- === SpacesSync ===
 ---
---- Synchronize macOS Spaces across monitors.
+--- Synchronize macOS Spaces across displays.
 ---
---- When you switch Spaces on one monitor, all other monitors in the same
+--- When you switch Spaces on one display, all other displays in the same
 --- sync group follow to the matching Space index.
 ---
---- Monitors are identified by position number (reading order:
+--- Displays are identified by position number (reading order:
 --- left-to-right, top-to-bottom). Define sync groups as sets of position
 --- numbers.
 ---
 --- **Requirements:**
 ---  * macOS Sequoia 15.0+ (uses private `hs.spaces` APIs)
----  * Two or more monitors with multiple Spaces configured
+---  * Two or more displays with multiple Spaces configured
 ---  * "Displays have separate Spaces" must be ON (System Settings > Desktop & Dock > Mission Control)
 ---  * "Automatically rearrange Spaces based on most recent use" should be OFF
 ---
@@ -84,16 +84,16 @@ end
 
 --- SpacesSync.syncGroups
 --- Variable
---- List of sync groups. Each group is a list of monitor position numbers.
+--- List of sync groups. Each group is a list of display position numbers.
 --- Positions are assigned in reading order (left-to-right, top-to-bottom).
---- Monitors not in any group are independent.
+--- Displays not in any group are independent.
 ---
 --- Default value: `{ {1, 2} }`
 ---
 --- Examples:
----  * `{ {1, 2} }` — monitors 1 and 2 sync together
+---  * `{ {1, 2} }` — displays 1 and 2 sync together
 ---  * `{ {1, 2}, {3, 4} }` — two independent pairs
----  * `{ {1, 2, 3} }` — three monitors sync together
+---  * `{ {1, 2, 3} }` — three displays sync together
 obj.syncGroups = { { 1, 2 } }
 
 --- SpacesSync.switchDelay
@@ -118,15 +118,15 @@ obj.debounceSeconds = 0.8
 ---
 --- ```lua
 --- {
----   ["1"]     = { [1] = "Notes", [2] = "Music" },              -- independent monitor 1
+---   ["1"]     = { [1] = "Notes", [2] = "Music" },              -- independent display 1
 ---   ["2,3,4"] = { [1] = "Code",  [2] = "Email", [3] = "Browser" }, -- sync group {2,3,4}
 --- }
 --- ```
 ---
---- A monitor's **name group** is the sync group containing its position
+--- A display's **name group** is the sync group containing its position
 --- (sorted, comma-joined — e.g. `"2,3,4"`), or an implicit group-of-one
---- (just its position, e.g. `"1"`) for independent monitors. Names live
---- inside the group so independent monitors and different sync groups
+--- (just its position, e.g. `"1"`) for independent displays. Names live
+--- inside the group so independent displays and different sync groups
 --- don't share a flat global namespace.
 ---
 --- **This table is populated from `hs.settings` at runtime. Do not assign
@@ -226,7 +226,7 @@ local function getDisplayLabel(uuid)
   local name = screen and screen:name() or uuid:sub(1, 8)
   local pos = uuidToPosition[uuid]
   if pos then
-    return name .. " [pos " .. pos .. "/" .. totalScreens .. "]"
+    return name .. " [position " .. pos .. "/" .. totalScreens .. "]"
   end
   return name
 end
@@ -252,7 +252,7 @@ local function getTargetsFor(triggerUUID)
           if targetUUID then
             table.insert(targets, targetUUID)
           else
-            obj.logger.w("Group references pos " .. gpos .. " but only " .. totalScreens .. " screens connected")
+            obj.logger.w("Group references position " .. gpos .. " but only " .. totalScreens .. " displays connected")
           end
         end
       end
@@ -296,15 +296,15 @@ end
 -- SPACE NAMES
 -- ============================================================================
 --
--- Names are scoped to a "name group" so that independent monitors and
+-- Names are scoped to a "name group" so that independent displays and
 -- different sync groups don't share a flat global namespace. The name group
--- for a monitor is:
---   * The sync group containing the monitor's position (if any), or
---   * An implicit group-of-one for independent monitors.
+-- for a display is:
+--   * The sync group containing the display's position (if any), or
+--   * An implicit group-of-one for independent displays.
 --
 -- The group key is the sorted comma-joined positions of the group, e.g.
--- "2,3,4" for a sync group of monitors 2, 3, 4; "1" for an independent
--- monitor at position 1. This matches the positional identity the user
+-- "2,3,4" for a sync group of displays 2, 3, 4; "1" for an independent
+-- display at position 1. This matches the positional identity the user
 -- writes in `syncGroups`.
 --
 -- Persistence layout (keys are stringified for hs.settings / plist round-trip):
@@ -317,7 +317,7 @@ end
 local SETTINGS_KEY = "SpacesSync.spaceNames"
 local namesLoaded = false
 
--- Canonical group key for the monitor at `uuid`. Returns nil if the UUID
+-- Canonical group key for the display at `uuid`. Returns nil if the UUID
 -- isn't in the current position map (e.g. map not built yet).
 local function getGroupKey(uuid)
   local pos = uuidToPosition[uuid]
@@ -426,8 +426,8 @@ local function ensureNamesLoaded()
   namesLoaded = true
 end
 
--- Look up the name for the given monitor's Nth Space. Returns (name,
--- isUnnamed). If the monitor has no name stored for that index, returns
+-- Look up the name for the given display's Nth Space. Returns (name,
+-- isUnnamed). If the display has no name stored for that index, returns
 -- "Space N" with isUnnamed = true.
 local function nameForIndex(uuid, index)
   ensureNamesLoaded()
@@ -449,11 +449,11 @@ end
 -- ============================================================================
 
 -- Mockup 4: small context rows above/below + large highlighted current row.
--- All rows show their index. Rendered with hs.canvas on the trigger monitor.
+-- All rows show their index. Rendered with hs.canvas on the trigger display.
 --
 -- Two display modes share this canvas:
 --   * Passive popup — `showPopup()`. Timer-dismissed. Used by the watcher
---     after sync, by rename success, by independent-monitor switches.
+--     after sync, by rename success, by independent-display switches.
 --   * Interactive picker — `startPicker()`. Eventtap captures arrow keys to
 --     move the selection, Return to switch, Escape to dismiss. Rebuilds the
 --     canvas on each keypress via `buildPopupCanvas`.
@@ -521,7 +521,7 @@ hidePopup = function()
   end
 end
 
--- Build and show the canvas for the given monitor, highlighting
+-- Build and show the canvas for the given display, highlighting
 -- `highlightedIndex` (pass nil for no highlight). Does NOT set a dismissal
 -- timer and does NOT touch picker state — pure rendering.
 -- Used directly by the picker to rebuild on each arrow press; wrapped by
@@ -541,7 +541,7 @@ buildPopupCanvas = function(triggerUUID, highlightedIndex)
 
   ensureNamesLoaded()
 
-  -- Build row list — only indices that currently exist on the trigger monitor.
+  -- Build row list — only indices that currently exist on the trigger display.
   local rows = {}
   local maxNameWidth = 0
   for i = 1, spaceCount do
@@ -652,7 +652,7 @@ end
 
 -- Passive popup: shows the popup for `obj.popupDuration` seconds, then
 -- auto-dismisses. Dismisses any in-progress picker first. Used by the
--- watcher after sync, by `renameCurrentSpace`, and by independent-monitor
+-- watcher after sync, by `renameCurrentSpace`, and by independent-display
 -- switches.
 showPopup = function(triggerUUID, highlightedIndex)
   if popupState.isPicker then
@@ -819,7 +819,7 @@ local function pickerExecuteSwitch()
   if not ok then
     obj.logger.e("picker: gotoSpace error — " .. tostring(err))
   end
-  -- The hs.spaces.watcher will fire from the switch and, if the monitor is
+  -- The hs.spaces.watcher will fire from the switch and, if the display is
   -- in a sync group, sync siblings and show a passive post-switch popup.
 end
 
@@ -841,21 +841,21 @@ local function pickerNavigate(delta)
   pickerResetTimer()
 end
 
--- Open the interactive picker on the given monitor, starting with
--- `startingIndex` selected (typically the monitor's current Space).
+-- Open the interactive picker on the given display, starting with
+-- `startingIndex` selected (typically the display's current Space).
 local function startPicker(triggerUUID, startingIndex)
   -- Defensive: if a previous picker never got torn down, clean it up.
   if popupState.isPicker then pickerDismiss() end
 
   local screen = hs.screen.find(triggerUUID)
   if not screen then
-    obj.logger.w("picker: no screen for UUID " .. tostring(triggerUUID))
+    obj.logger.w("picker: no display for UUID " .. tostring(triggerUUID))
     return
   end
 
   local count = getSpaceCount(triggerUUID)
   if count < 1 then
-    obj.logger.w("picker: no Spaces on monitor")
+    obj.logger.w("picker: no Spaces on display")
     return
   end
 
@@ -923,7 +923,7 @@ local function syncTarget(triggerUUID, triggerSpaceID, targetUUID)
 
   local targetScreen = hs.screen.find(targetUUID)
   if not targetScreen then
-    obj.logger.d("  " .. label .. ": SKIP (screen not found)")
+    obj.logger.d("  " .. label .. ": SKIP (display not found)")
     return
   end
 
@@ -1001,7 +1001,7 @@ local function setupWatcher()
       return
     end
 
-    -- Find targets for the triggering monitor
+    -- Find targets for the triggering display
     local targets = getTargetsFor(changedUUID)
     if not targets or #targets == 0 then
       obj.logger.d("SKIP: " .. getDisplayLabel(changedUUID) .. " not in any sync group")
@@ -1096,7 +1096,7 @@ local function checkEnvironment()
   -- Check macOS Mission Control settings
   local separateSpaces = hs.execute("defaults read com.apple.spaces spans-displays 2>/dev/null"):gsub("%s+", "")
   if separateSpaces == "1" then
-    obj.logger.e("'Displays have separate Spaces' is OFF. All monitors share one Space — nothing to sync. Enable it in System Settings > Desktop & Dock > Mission Control (requires logout).")
+    obj.logger.e("'Displays have separate Spaces' is OFF. All displays share one Space — nothing to sync. Enable it in System Settings > Desktop & Dock > Mission Control (requires logout).")
     state.osBlocked = true
   end
 
@@ -1127,7 +1127,7 @@ end
 --- SpacesSync:start()
 --- Method
 --- Starts Space syncing.
---- Checks macOS version and Mission Control settings, builds the monitor
+--- Checks macOS version and Mission Control settings, builds the display
 --- position map, and enables the Space watcher.
 ---
 --- Parameters:
@@ -1187,7 +1187,7 @@ function obj:start()
   for gi, group in ipairs(obj.syncGroups) do
     for _, pos in ipairs(group) do
       if positionSeen[pos] then
-        obj.logger.w("Position " .. pos .. " appears in group " .. positionSeen[pos] .. " and group " .. gi .. " — only the first group will be used for triggers from this monitor")
+        obj.logger.w("Position " .. pos .. " appears in group " .. positionSeen[pos] .. " and group " .. gi .. " — only the first group will be used for triggers from this display")
       else
         positionSeen[pos] = gi
       end
@@ -1223,7 +1223,7 @@ function obj:start()
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid then
-      obj.logger.i("  pos " .. pos .. ": " .. getDisplayLabel(uuid))
+      obj.logger.i("  position " .. pos .. ": " .. getDisplayLabel(uuid))
     end
   end
 
@@ -1233,19 +1233,19 @@ function obj:start()
     for _, pos in ipairs(group) do
       local uuid = positionToUUID[pos]
       if uuid then
-        table.insert(members, "pos " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
+        table.insert(members, "position " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
       else
-        table.insert(members, "pos " .. pos .. " (not connected)")
+        table.insert(members, "position " .. pos .. " (not connected)")
       end
     end
     obj.logger.i("Group " .. gi .. ": " .. table.concat(members, ", "))
   end
 
-  -- Log independent monitors
+  -- Log independent displays
   for pos = 1, totalScreens do
     local uuid = positionToUUID[pos]
     if uuid and not getTargetsFor(uuid) then
-      obj.logger.i("Independent: pos " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
+      obj.logger.i("Independent: position " .. pos .. " (" .. getDisplayLabel(uuid) .. ")")
     end
   end
 
@@ -1327,9 +1327,9 @@ end
 
 --- SpacesSync:showNames()
 --- Method
---- Opens the interactive Space picker on the monitor under the mouse cursor
---- (or the main monitor as fallback). The picker lists every Space on that
---- monitor with its name and lets you navigate:
+--- Opens the interactive Space picker on the display under the mouse cursor
+--- (or the main display as fallback). The picker lists every Space on that
+--- display with its name and lets you navigate:
 ---
 ---  * **↑ / ↓**         — move the selection (wraps)
 ---  * **Return / Enter** — switch to the selected Space
@@ -1353,7 +1353,7 @@ function obj:showNames()
 
   local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
   if not screen then
-    obj.logger.w("showNames: no screen available")
+    obj.logger.w("showNames: no display available")
     return self
   end
 
@@ -1366,15 +1366,15 @@ end
 
 --- SpacesSync:renameCurrentSpace()
 --- Method
---- Prompts for a new name for the Space currently active on the monitor
---- under the mouse cursor (or the main monitor as fallback).
+--- Prompts for a new name for the Space currently active on the display
+--- under the mouse cursor (or the main display as fallback).
 ---
---- Names are scoped to the monitor's **name group**: the sync group
---- containing that monitor's position, or an implicit group-of-one for
---- independent monitors. The rename applies to every monitor in the same
+--- Names are scoped to the display's **name group**: the sync group
+--- containing that display's position, or an implicit group-of-one for
+--- independent displays. The rename applies to every display in the same
 --- name group (which, by definition, are showing the same Space index
 --- anyway because they sync in lockstep). A rename on an independent
---- monitor does NOT affect any sync group, and vice versa.
+--- display does NOT affect any sync group, and vice versa.
 ---
 --- Submitting an empty name clears the existing name for that index in
 --- that group.
@@ -1392,7 +1392,7 @@ function obj:renameCurrentSpace()
 
   local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
   if not screen then
-    hs.alert.show("SpacesSync: no screen")
+    hs.alert.show("SpacesSync: no display")
     return self
   end
 
@@ -1411,7 +1411,7 @@ function obj:renameCurrentSpace()
 
   local groupKey = getGroupKey(uuid)
   if not groupKey then
-    hs.alert.show("SpacesSync: can't determine name group")
+    hs.alert.show("SpacesSync: can't determine sync group")
     return self
   end
 
@@ -1459,7 +1459,7 @@ end
 --- Parameters:
 ---  * mapping - A table containing hotkey modifier/key details for any of:
 ---   * toggle - Toggle Space syncing on/off
----   * showNames - Show the Space-names popup on the current monitor
+---   * showNames - Show the Space-names popup on the current display
 ---   * renameSpace - Rename the currently active Space
 ---
 --- Returns:
