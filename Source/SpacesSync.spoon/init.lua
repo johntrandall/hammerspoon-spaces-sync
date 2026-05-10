@@ -22,7 +22,7 @@ obj.__index = obj
 
 -- Metadata
 obj.name = "SpacesSync"
-obj.version = "0.2"
+obj.version = "0.3"
 obj.author = "John Randall <john@johnrandall.com>"
 obj.homepage = "https://github.com/johntrandall/hammerspoon-spaces-sync"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
@@ -1801,6 +1801,108 @@ end
 ---  * A boolean
 function obj:isEnabled()
   return state.enabled
+end
+
+--- SpacesSync:status()
+--- Method
+--- Returns a snapshot of internal state for debugging. Also logs a
+--- one-line human-readable summary at info level.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * A table with these keys:
+---   * enabled           — boolean, `:start()` succeeded and watchers armed
+---   * osBlocked         — boolean, set true by environment / Accessibility checks
+---   * syncInProgress    — boolean, sync chain is mid-flight
+---   * chainGeneration   — integer, monotonically increasing token (item 0a)
+---   * activeChainTimers — number of chain-owned timers currently scheduled
+---   * totalScreens      — count of connected displays
+---   * positionMap       — copy of position → UUID map
+---   * syncGroups        — copy of `obj.syncGroups`
+---   * lastActiveSpaces  — copy of UUID → SpaceID baseline
+---   * lastVerifierResult — `{ timestamp, mismatches }` from the most recent
+---     end-of-chain verifier run, or nil if no chain has run yet
+---   * pollTimeout       — current `obj.pollTimeout`
+---   * pollInterval      — current `obj.pollInterval`
+function obj:status()
+  -- Defensive shallow copies so callers can mutate without poisoning state.
+  local positionMapCopy = {}
+  for k, v in pairs(positionToUUID) do positionMapCopy[k] = v end
+
+  local syncGroupsCopy = {}
+  if type(obj.syncGroups) == "table" then
+    for gi, group in ipairs(obj.syncGroups) do
+      if type(group) == "table" then
+        local groupCopy = {}
+        for _, pos in ipairs(group) do
+          table.insert(groupCopy, pos)
+        end
+        syncGroupsCopy[gi] = groupCopy
+      end
+    end
+  end
+
+  local lastActiveCopy = {}
+  for k, v in pairs(state.lastActiveSpaces) do lastActiveCopy[k] = v end
+
+  local lastVerifierCopy = nil
+  if state.lastVerifierResult then
+    local mismatchesCopy = {}
+    for i, m in ipairs(state.lastVerifierResult.mismatches or {}) do
+      mismatchesCopy[i] = {
+        uuid        = m.uuid,
+        kind        = m.kind,
+        expectedIdx = m.expectedIdx,
+        actualIdx   = m.actualIdx,
+      }
+    end
+    lastVerifierCopy = {
+      timestamp  = state.lastVerifierResult.timestamp,
+      mismatches = mismatchesCopy,
+    }
+  end
+
+  -- Human-readable one-liner at info level.
+  local stateStr
+  if not state.enabled then
+    stateStr = state.osBlocked and "blocked" or "disabled"
+  elseif state.syncInProgress then
+    stateStr = "syncing"
+  else
+    stateStr = "idle"
+  end
+  local nGroups = #syncGroupsCopy
+  local lastVerifyStr = "no chain run yet"
+  if lastVerifierCopy then
+    local n = #lastVerifierCopy.mismatches
+    if n == 0 then
+      lastVerifyStr = "last verify clean at " ..
+                      os.date("%H:%M:%S", lastVerifierCopy.timestamp)
+    else
+      lastVerifyStr = "last verify had " .. n .. " mismatch(es) at " ..
+                      os.date("%H:%M:%S", lastVerifierCopy.timestamp)
+    end
+  end
+  obj.logger.i("SpacesSync v" .. obj.version .. ": " .. stateStr .. ", " ..
+               totalScreens .. " screens, " .. nGroups .. " sync group(s), " ..
+               lastVerifyStr)
+
+  return {
+    enabled            = state.enabled,
+    osBlocked          = state.osBlocked,
+    syncInProgress     = state.syncInProgress,
+    chainGeneration    = state.chainGeneration,
+    activeChainTimers  = #state.chainTimers,
+    totalScreens       = totalScreens,
+    positionMap        = positionMapCopy,
+    syncGroups         = syncGroupsCopy,
+    lastActiveSpaces   = lastActiveCopy,
+    lastVerifierResult = lastVerifierCopy,
+    pollTimeout        = obj.pollTimeout,
+    pollInterval       = obj.pollInterval,
+  }
 end
 
 --- SpacesSync:showNames()

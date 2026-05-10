@@ -83,11 +83,13 @@ Space names are set at runtime using the `renameSpace` hotkey (⌃⌥⌘R by def
 | Property          | Default      | Description                                                                                                  |
 | ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | `syncGroups`      | `{ {1, 2} }` | List of sync groups. Each group is a list of monitor position numbers.                                       |
-| `switchDelay`     | `0.3`        | Seconds between each `gotoSpace` call.                                                                       |
-| `debounceSeconds` | `0.8`        | Seconds after sync before watcher re-enables.                                                                |
+| `pollTimeout`     | `2.0`        | Seconds to wait for each `gotoSpace` to verify on the target before continuing. See [Verify-based sync](#verify-based-sync). |
+| `pollInterval`    | `0.030`      | Polling cadence for the verify loop.                                                                         |
 | `spaceNames`      | `{}`         | Runtime name map (read-only from config). Populated from `hs.settings`; set via ⌃⌥⌘R. See [Space names](#space-names). |
 | `popupDuration`   | `2`          | Seconds the space-names popup stays visible.                                                                 |
 | `logger`          | `hs.logger` at `info` | Logger object. Set level with `spoon.SpacesSync.logger.setLogLevel('debug')`.                       |
+| `switchDelay`     | `0.3`        | **Deprecated** — superseded by `pollTimeout` in v3. Parsed but ignored at runtime; will be removed in a future release. |
+| `debounceSeconds` | `0.8`        | **Deprecated** — superseded by per-target observed-value writes in v3. Parsed but ignored at runtime; will be removed in a future release. |
 
 Hotkeys are configured via `:bindHotkeys()`:
 
@@ -154,15 +156,34 @@ spoon.SpacesSync:toggle()
 spoon.SpacesSync:isEnabled()
 spoon.SpacesSync:showNames()
 spoon.SpacesSync:renameCurrentSpace()
+spoon.SpacesSync:status()        -- diagnostic snapshot, see Debugging below
 ```
 
 ## How it works
 
-1. `hs.spaces.watcher` detects a space change on any monitor
-2. If that monitor is in a sync group, find the space index it switched to
-3. For each target in the group, call `hs.spaces.gotoSpace()` to switch to the same index
-4. Switches are chained with a delay (macOS drops rapid back-to-back calls)
-5. A debounce period prevents the watcher from reacting to its own switches
+### Verify-based sync
+
+Two entry paths fire the engine:
+
+1. **Spaces watcher** (`hs.spaces.watcher`) — fires when any monitor's active Space changes. The primary path, triggered by user swipes, ⌃→/⌃←, Dock clicks, or other macOS UI.
+2. **Screen watcher** (`hs.screen.watcher`) — fires when the display layout changes (monitor plug/unplug, lid open/close, dock/undock, displays rearranged in System Settings, resolution change). Coalesces macOS's 2-5x burst into one rebuild via a 250 ms debounce.
+
+When the spaces watcher fires:
+
+1. Compute the *expected end state*: for each sync-group target, the Space ID at the trigger's index.
+2. For each target, dispatch `hs.spaces.gotoSpace()`, then **poll** `hs.spaces.activeSpaceOnScreen()` every `pollInterval` (default 30 ms) until it matches the expected Space ID — or `pollTimeout` (default 2 s) elapses.
+3. After each verify, write the **observed** post-poll value into the per-target baseline. macOS's own echo for the dispatch then diffs to no-change cleanly — no debounce window needed.
+4. After the last target, run an **end-of-chain verifier** that diffs the actual world against the expected end state. Any mismatch is logged at error level and the baseline is refreshed from reality.
+
+The polling cadence and timeout were calibrated empirically (mean Mission Control flip latency on macOS 15.7.5 is ~753 ms; the largest observed flip was ~898 ms). For the full analysis see [dev-docs/findings/F-010-polling-model-a-vs-b.md](dev-docs/findings/F-010-polling-model-a-vs-b.md).
+
+When the screen watcher fires (after the 250 ms debounce):
+
+1. Bail any in-flight sync chain.
+2. Rebuild the position map.
+3. Refresh the baseline.
+4. Validate `syncGroups` against the new layout.
+5. Show a "SpacesSync: display layout changed" HUD.
 
 For detailed notes on `hs.spaces` quirks and pitfalls, see [dev-docs/hammerspoon-and-spaces-quirks.md](dev-docs/hammerspoon-and-spaces-quirks.md).
 
@@ -226,7 +247,7 @@ If you find it works (or breaks) on a different version, please open an issue or
 All output goes to the **Hammerspoon Console** (open via the menubar icon, or `hs -c 'hs.openConsole()'`).
 
 - **Info level** (default): logs syncs, skips, warnings, errors, version checks, and the position map on start.
-- **Debug level** (`spoon.SpacesSync.logger.setLogLevel('debug')`): adds watcher state dumps on every fire, per-target dispatch details, debounce lifecycle. Use when diagnosing race conditions or timing issues.
+- **Debug level** (`spoon.SpacesSync.logger.setLogLevel('debug')`): adds watcher state dumps on every fire, computed `expectedEndState` per chain, per-target dispatch and verify ticks, end-of-chain verifier results. Use when diagnosing race conditions or timing issues.
 
 ### Viewing logs from the terminal
 
@@ -248,6 +269,32 @@ hs -c 'hs.reload()'
 hs -c 'return tostring(spoon.SpacesSync:isEnabled())'
 hs -c 'return hs.host.operatingSystemVersion()'
 ```
+
+### `:status()` — diagnostic snapshot
+
+`spoon.SpacesSync:status()` returns a table summarizing internal state. It also logs a one-line summary at info level so you can see it in the Hammerspoon Console.
+
+```bash
+hs -c 'return hs.inspect(spoon.SpacesSync:status())'
+```
+
+Fields returned:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `enabled` | bool | `:start()` succeeded and watchers are armed |
+| `osBlocked` | bool | environment / Accessibility checks failed |
+| `syncInProgress` | bool | a sync chain is currently mid-flight |
+| `chainGeneration` | int | monotonically increasing chain token (used to invalidate stale closures) |
+| `activeChainTimers` | int | number of chain-owned timers currently scheduled |
+| `totalScreens` | int | count of connected displays |
+| `positionMap` | table | copy of position → display UUID map |
+| `syncGroups` | table | copy of `obj.syncGroups` |
+| `lastActiveSpaces` | table | copy of UUID → Space ID baseline |
+| `lastVerifierResult` | table | `{ timestamp, mismatches }` from the most recent end-of-chain verifier run, or `nil` if no chain has run yet |
+| `pollTimeout`, `pollInterval` | number | current values of the timing knobs |
+
+The one-line log looks like `SpacesSync v0.3: idle, 4 screens, 1 sync group(s), last verify clean at HH:MM:SS`.
 
 For AI agents working on this codebase, read `CLAUDE.md` first.
 
