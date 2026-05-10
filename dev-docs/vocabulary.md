@@ -21,7 +21,6 @@ Some concepts have both a user-facing and internal name (e.g. "Sync group" vs `g
 | Display set ＊roadmap＊ | (not modeled in code) | — |
 | Space            | space, `spaceID` | — |
 | Space index      | space index, `spaceIndex` | — |
-| Workspace        | workspace, `workspaceNames` | — |
 | Switch delay     | `switchDelay` | — |
 | Debounce         | `debounceSeconds` | — |
 | Status HUD       | status HUD | — |
@@ -68,7 +67,7 @@ Displays not in any sync group are **independent** — SpacesSync never moves th
 
 **Identity:** groups are drawn from a **fixed pool of 10 letters: A, B, C, D, E, F, G, H, I, J.** All 10 always exist; there is no creation or deletion lifecycle. A group is "in use" when one or more positions are assigned to it in `groupOf`; otherwise it's empty and inert. Empty groups remain in the pool — their letter and label persist across emptiness.
 
-**Why 10:** macOS supports up to ~8 displays in pro configurations (Mac Studio M2 Ultra). Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. So a 10-group pool covers every realistic configuration with comfortable buffer. The fixed cap also eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
+**Why 10:** more than enough for any current Mac with comfortable buffer. Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. The fixed cap eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
 
 **Display labels:** each group has an **optional** label in `groupLabels` (sparse map, only contains entries for labeled groups). When a label exists, it displays as "A: Code". When absent, the row shows "Group A" — the letter doubles as the default label. Labels are user-editable in the settings pane's Group Labels section.
 
@@ -103,6 +102,12 @@ The waiting period after a sync completes before SpacesSync resumes reacting to 
 
 ### Status HUD
 The single-line "SpacesSync: ON" / "SpacesSync: OFF" overlay that flashes when the master toggle changes state. **Distinct from the Space-names popup** — the popup is the multi-row panel showing each Space's index and name; the HUD is the wider, centered, one-line status banner.
+
+### Popup duration
+How long the Space-names popup remains on screen after a sync or after `:showNames()`. **Internal name:** `popupDuration`. Default 2 s.
+
+### Status HUD duration
+How long the Status HUD banner stays visible when the master switch is toggled. **Internal name:** `statusDuration`. Default 3 s. Distinct from `popupDuration` — these are two separate overlays with separate dwell times.
 
 ### Sync mode
 The two-value setting that gates the watcher: **Automatic** (SpacesSync syncs every Space change live) or **Manual** (displays move freely; the user invokes Sync now to bring the group together). Independent of the master Enable toggle.
@@ -144,7 +149,7 @@ The `hs.spaces.watcher` instance that fires the engine when macOS reports a Spac
 The sequence of operations triggered by one Space change: detect → identify trigger → compute targets → chain `gotoSpace` calls with `switchDelay` between → wait `debounceSeconds` → re-enable watcher. Internal narrative term used in design docs and code comments. **In user copy, just say "sync".**
 
 ### `groupOf`
-The persistent map from position number to group ID, stored in `SpacesSync.json`. Canonical form for sync-group membership. Letters in the GUI ("Group A", "Group B") are derived display labels; the underlying IDs are opaque (`grp_xxxxxx`) so future per-group metadata doesn't break on reshuffle.
+The persistent map from position number to a letter from the fixed pool A–J, stored in `SpacesSync.json` (e.g. `{ "1": "A", "2": "A", "4": "B" }`). Canonical form for sync-group membership. The letter is both the stable internal identifier and the default display label; an optional user-set label in `groupLabels` can be combined ("A: Code") for display.
 
 ### `syncGroups`
 The runtime list-of-lists derived from `groupOf` — what the sync engine consumes. Stable derivation: sort group IDs, sort positions within each group.
@@ -177,8 +182,8 @@ Use macOS / Hammerspoon names verbatim when referring to those systems' concepts
 |---|---|---|
 | Monitor | Display | Consistency with macOS and the rest of the codebase. |
 | Active display / active Space | Cursor display / current Space | Two ways to say one thing. The cursor display × current Space pair covers every user-action reference; "active" introduces a third overlapping concept and breeds drift. |
-| "Workspace" (any sense) | "Space" with cross-display copy in sublabel | Earlier vocab introduced "workspace" for "the named state across a sync group at one index." Council review found it was an over-promoted abstraction (no UI artifact, asks users to learn a noun whose only payoff is precision). Dropped. The internal field stays `spaceNames` keyed by group ID + index. |
-| "Rename / name the sync group" | "Rename current Space" with sublabel "Names this Space across the sync group" | A sync group has many named Spaces (one per index). Renaming names just the current Space — and that name propagates across the group automatically because it's keyed `(group ID, index)`. |
+| "Workspace" (any sense) | "Space" with cross-display copy in sublabel | Council review found "workspace" was an over-promoted abstraction (no UI artifact, asks users to learn a noun whose only payoff is precision). Dropped. The internal field stays `spaceNames` keyed by `(group letter, index)`. |
+| "Rename / name the sync group" | "Rename current Space" with sublabel "Names this Space across the sync group" | A sync group has many named Spaces (one per index). Renaming names just the current Space — and that name propagates across the group automatically because it's keyed `(group letter, index)`. |
 | "Rename current group" / "rename the sync group" | (split: see right) | v1 has *two* surfaces for naming. **"Rename current Space"** targets the current Space; the name is keyed `(group, index)` and propagates within the group. **"Group label"** in the Group Labels section sets a per-group display name. Conflating them in copy is wrong. |
 | Trigger / target (in user copy) | Cursor display, or "the group" / "the rest of the group" | Internal only. |
 | Sibling (in user copy) | The rest of the group | Internal only. |

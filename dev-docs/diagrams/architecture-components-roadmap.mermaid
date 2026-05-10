@@ -19,7 +19,7 @@ flowchart TB
             SyncEng[Sync Engine<br/>chained gotoSpace<br/>+ debounce]:::internal
             PosMap[Position Map<br/>UUID ↔ position]:::internal
             GroupLook[Group Lookup<br/>getTargetsFor]:::internal
-            Names[Name Store<br/>per-group<br/>workspace names]:::internal
+            Names[Name Store<br/>per-group<br/>Space names]:::internal
             UI[Popup / Picker /<br/>Status HUD<br/>hs.canvas + eventtap]:::internal
         end
 
@@ -30,7 +30,7 @@ flowchart TB
     end
 
     JSON[(SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊new＊ canonical config<br/>enabled, syncMode, groupOf,<br/>_lastSeen, timing, hotkeys)]:::config
-    Plist[(hs.settings plist<br/><br/>workspace names<br/>＊migrated atomically＊<br/>on groupOf change)]:::store
+    Plist[(hs.settings plist<br/><br/>Space names<br/>＊migrated atomically＊<br/>on groupOf change)]:::store
     HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json<br/>hs.shutdownCallback]:::external
 
     Shutdown[hs.shutdownCallback<br/>＊new＊ teardown<br/>delete webview<br/>unsubscribe userContent<br/>stop pathwatcher]:::proposed

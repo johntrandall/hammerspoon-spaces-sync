@@ -64,7 +64,7 @@ sequenceDiagram
         else enabled changed on to off
             Spoon->>Watcher: stopWatcher
             Spoon-->>User: Status HUD OFF
-        else syncMode now on-demand
+        else syncMode now manual
             Spoon->>Watcher: stopWatcher
             Note right of Spoon: engine still active
         else syncMode now automatic

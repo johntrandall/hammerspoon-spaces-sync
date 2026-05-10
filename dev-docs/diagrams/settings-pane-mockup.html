@@ -305,10 +305,6 @@
     background: rgba(255, 255, 255, 0.10);
     margin: 4px 2px;
   }
-  .menu-item.create {
-    color: var(--accent-blue);
-  }
-  .menu-item.create .chip { border: 1px dashed rgba(10, 132, 255, 0.4); background: transparent; }
 
   /* Timing fields with info icons */
   .timing-grid {
@@ -707,8 +703,8 @@
         <div>
           <div class="label">Enable SpacesSync</div>
           <div class="sublabel">
-            Hotkeys, popup, picker, status HUD, and sync. Disable to
-            silence everything until you toggle back on.
+            Hotkeys, the popup, the picker, the status HUD, and sync.
+            Disable to silence everything until you toggle back on.
           </div>
         </div>
         <div class="switch" title="enabled = true"></div>
@@ -761,7 +757,7 @@
            ============================================================ -->
       <h3>Group Membership</h3>
       <div class="section-hint">
-        Assign two or more displays to the same group to sync them.
+        Two or more displays in the same group sync together.
         Displays set to <em>None</em> stay independent.
       </div>
       <div class="inset">
@@ -791,7 +787,7 @@
           <div class="group-select" style="border-color: var(--accent-blue); background: rgba(10,132,255,0.08);">
             <span class="chip none"></span>
             <span style="color: var(--text-tertiary)">— None</span>
-            <span class="caret" style="color: var(--accent-blue)">▴</span>
+            <span class="caret" style="color: var(--accent-blue)">▾</span>
           </div>
           <!-- Pool of 10 letters always exists (A-J). Labeled groups
                show their label after the letter; unlabeled show
@@ -897,7 +893,7 @@
       </div>
 
       <!-- ============================================================
-           Sync — segmented control selects Automatic or On-demand mode.
+           Sync — segmented control selects Automatic or Manual mode.
            Sync Now is always available as a one-shot, regardless of mode.
            ============================================================ -->
       <h3>Sync</h3>
@@ -918,7 +914,7 @@
       </div>
       <div class="row">
         <div>
-          <div class="label">Sync now</div>
+          <div class="label">Sync Now</div>
           <div class="sublabel">
             One-shot: switch the cursor display's group to its current
             Space. The cursor display defines the action — same
@@ -1033,7 +1029,7 @@
         </div>
         <div class="hotkey-row">
           <div>
-            <div class="label">Sync now</div>
+            <div class="label">Sync Now</div>
             <div class="sublabel">Switch the cursor display's group to its current Space.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
@@ -1042,7 +1038,7 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Open settings</div>
-            <div class="sublabel">Open this pane. ⌘, matches the macOS Preferences convention.</div>
+            <div class="sublabel">Open this pane. ⌃⌥⌘, echoes the macOS ⌘, Preferences convention.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ ,</span>
           <a class="kbd-reset" title="Restore default">Reset</a>
@@ -1050,7 +1046,7 @@
       </div>
       <div class="footnote" style="margin-top: 10px;">
         Click a shortcut to re-record. Conflicts with other bindings are
-        flagged on Apply. Hotkeys are part of <code>SpacesSync.json</code>
+        flagged on save. Hotkeys are part of <code>SpacesSync.json</code>
         — hand-editing works the same way.
       </div>
     </div>
@@ -1067,7 +1063,8 @@
   <div class="callouts">
     <h4>Two layers of "on"</h4>
     <strong>Enable SpacesSync</strong> is the master switch — governs
-    rename, picker, popups, hotkeys, and sync. <strong>Sync mode</strong>
+    hotkeys, the popup, the picker, the status HUD, and sync.
+    <strong>Sync mode</strong>
     is independent: <em>Automatic</em> syncs Space switches live,
     <em>Manual</em> leaves displays free and uses <em>Sync Now</em>
     to bring them together.
@@ -1118,10 +1115,11 @@
     is OFF — surfacing the #1 install-time gotcha in the GUI rather
     than the Hammerspoon console. Hidden when env checks pass.
 
-    <h4>Apply persists; pathwatcher hot-reloads</h4>
-    Apply writes <code>~/.hammerspoon/SpacesSync.json</code> and re-runs
-    the spoon's setup. Hand-editing the JSON triggers the same path via
-    <code>hs.pathwatcher</code> — both surfaces converge on the same code.
+    <h4>Two surfaces, one path</h4>
+    Every GUI edit autosaves to <code>~/.hammerspoon/SpacesSync.json</code>.
+    Hand-editing the JSON in any text editor triggers the same code path
+    via <code>hs.pathwatcher</code>. Both surfaces converge on the
+    spoon's apply routine — there is no Apply button.
 
     <h4>Tooltips, not docs</h4>
     Each timing field has a hover-info tooltip that explains the <em>why</em>,
