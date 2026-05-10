@@ -124,7 +124,7 @@ Dwell time for the Status HUD overlay (see "Status HUD" entry above for what tri
 The two-value setting that gates the watcher: **Automatic** (SpacesSync syncs every Space change live) or **Manual** (displays move freely; the user invokes Sync now to bring the group together). Independent of the master Enable toggle.
 
 ### Sync now
-The user-invoked action that switches the cursor display's group to the cursor display's current Space. Hotkey ⌃⌥⌘S by default. Scope is the cursor display's group only — other groups stay where they are.
+The user-invoked action that switches the cursor display's group to the cursor display's current Space. Other sync groups are not touched. Hotkey ⌃⌥⌘S by default.
 
 **Casing:** sentence-case "Sync now" in narrative prose; **title-case "Sync Now"** in UI labels (button text, hotkey-row label, action references that read as button names). Both forms are canonical. Same convention applies to "Open Settings" / "open settings" and "Open Space picker".
 
@@ -138,7 +138,7 @@ The auto-dismissing overlay that briefly lists the cursor display's Spaces by in
 The user-invoked action that opens the settings pane. Hotkey ⌃⌥⌘, by default — echoes the macOS ⌘, Preferences convention. Internally `:openSettings()`.
 
 ### Sync (verb)
-Canonical verb for "propagate one display's Space change to the rest of its group." Use as both verb (`SpacesSync syncs every Space switch to the rest of its group`) and noun (`a sync started by the watcher`). **Avoid** "mirror" (implies bidirectional reflection — sync is one-way), "align" (implies coordinate-matching — too geometric), "propagate" (technical jargon), "follow" (ambiguous about who follows whom). The corresponding internal narrative term is "sync chain" (the full sequence: detect → compute targets → chained gotoSpace → debounce).
+Canonical verb for "propagate one display's Space change to the rest of its group." Use as both verb (`SpacesSync syncs every Space switch to the rest of its group`) and noun (`a sync started by the watcher`). For banned alternates and rationales, see the Forbidden table below. The corresponding internal narrative term is "sync chain" — the full sequence: detect → compute targets → chained gotoSpace → debounce.
 
 ### Enable SpacesSync (master switch)
 The single boolean that governs whether SpacesSync does anything at all. When off: hotkeys, popups, picker, status HUD, and sync are all dormant.

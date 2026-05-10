@@ -858,6 +858,9 @@
             <span class="chip b"></span><span>Group B</span>
             <span class="caret" style="color: var(--accent-blue)">▴</span>
           </div>
+          <!-- Demo menu trimmed to 3 items so the upward render doesn't
+               fully occlude positions 2 and 3. In production the menu shows
+               all 10 letters; this reduced demo keeps the layout legible. -->
           <div class="menu menu-upward" role="menu">
             <div class="menu-item">
               <span class="checkmark"></span>
@@ -874,8 +877,6 @@
               <span class="chip b"></span>
               <span>Group B <span class="members">— position 4</span></span>
             </div>
-            <div class="menu-divider"></div>
-            <div class="menu-caption">Groups C – J available</div>
           </div>
         </div>
         <!-- Stale entry: position 5 was assigned to a group in
@@ -902,7 +903,7 @@
           <div class="label">Sync mode</div>
           <div class="sublabel">
             <strong>Automatic</strong> — SpacesSync syncs every Space
-            switch to the rest of the display's sync group. <strong>Manual</strong> —
+            switch to the rest of that group. <strong>Manual</strong> —
             displays move freely; press <em>Sync Now</em> to bring
             them together.
           </div>
@@ -916,8 +917,8 @@
         <div>
           <div class="label">Sync Now</div>
           <div class="sublabel">
-            One-shot: switch the cursor display's group to its current
-            Space. Works in either Sync mode.
+            One-shot: switch the cursor display's group to the cursor
+            display's current Space. Works in either Sync mode.
           </div>
         </div>
         <button class="btn-action">
@@ -967,9 +968,7 @@
               How long the <em>Space-names popup</em> stays visible — the
               panel listing every Space on a display with its index and
               name (e.g. "1: Notes, 2: Music"). Shown briefly after a sync
-              and after independent-display switches. Governs only this
-              auto-dismiss popup; the Space picker
-              (⌃⌥⌘N) has its own dwell. Default: 2s.
+              and after independent-display switches. Default: 2s.
             </span>
           </button>
         </span>
@@ -982,8 +981,7 @@
             <span class="info-tip__popover" role="tooltip">
               How long the single-line <em>"SpacesSync: ON"</em> or <em>"SpacesSync: OFF"</em>
               banner stays visible when the Spoon starts, stops, or
-              toggles. Different from the popup — this is the wider,
-              centered status indicator. Default: 3s.
+              toggles. Default: 3s.
             </span>
           </button>
         </span>
@@ -1029,7 +1027,7 @@
         <div class="hotkey-row">
           <div>
             <div class="label">Sync Now</div>
-            <div class="sublabel">Switch the cursor display's group to its current Space.</div>
+            <div class="sublabel">Switch the cursor display's group to the cursor display's current Space.</div>
           </div>
           <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
           <a class="kbd-reset" title="Restore default">Reset</a>

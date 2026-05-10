@@ -42,11 +42,14 @@ flowchart TB
 
     API -->|on :start: seed,<br/>load, applyToSpoon,<br/>startWatching| ConfigMod
     API -->|reads runtime fields<br/>populated by config| Engine
+    API -->|:syncNow dispatches<br/>one-shot to engine| SyncEng
+    API -->|:openSettings creates<br/>or focuses webview| SettingsPane
     SettingsPane <-->|JS↔Lua<br/>loadState applyState| ConfigMod
 
     ConfigMod -->|reads/writes<br/>SHA-256 ring buffer<br/>echo suppression| JSON
     ConfigMod -->|watches parent dir<br/>filters by basename<br/>retries on parse fail| JSON
     ConfigMod -->|on groupOf change<br/>migrate keys atomically<br/>flag orphans| Names
+    ConfigMod -->|on groupLabels change<br/>— membership unchanged —<br/>re-render dropdown labels| SettingsPane
 
     SettingsPane -->|register| Shutdown
     ConfigMod -->|register| Shutdown
