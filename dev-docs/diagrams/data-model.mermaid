@@ -1,0 +1,40 @@
+---
+title: SpacesSync — group representations (proposed)
+---
+flowchart LR
+    classDef ui fill:#08427b,stroke:#0a5394,color:#fff,stroke-width:2px
+    classDef stored fill:#5a4a1e,stroke:#d4a853,color:#fff,stroke-width:1.5px
+    classDef runtime fill:#1168bd,stroke:#0e5aa7,color:#fff,stroke-width:1.5px
+    classDef separate fill:#3a2d52,stroke:#7b5fb0,color:#fff,stroke-width:1.5px
+    classDef conv fill:#2e7d32,stroke:#4caf50,color:#fff
+
+    subgraph S1 [GUI shape — one row per display]
+        UI["position 1 → Group A<br/>position 2 → Group A<br/>position 3 → — None<br/>position 4 → Group B"]:::ui
+    end
+
+    subgraph S2 [Persistent shape — SpacesSync.json]
+        JSON["{<br/>  &quot;schemaVersion&quot;: 1,<br/>  &quot;active&quot;: true,        ＊master＊<br/>  &quot;autoSync&quot;: true,      ＊watcher＊<br/>  &quot;groupOf&quot;: {<br/>    &quot;1&quot;: &quot;A&quot;,<br/>    &quot;2&quot;: &quot;A&quot;,<br/>    &quot;4&quot;: &quot;B&quot;<br/>  },<br/>  &quot;switchDelay&quot;: 0.3,<br/>  &quot;debounceSeconds&quot;: 0.8,<br/>  &quot;popupDuration&quot;: 2,<br/>  &quot;statusDuration&quot;: 3,<br/>  &quot;hotkeys&quot;: {<br/>    &quot;toggle&quot;:      [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;Y&quot;],<br/>    &quot;showNames&quot;:   [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;N&quot;],<br/>    &quot;renameSpace&quot;: [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;R&quot;],<br/>    &quot;syncNow&quot;:     [&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;S&quot;],<br/>    &quot;openSettings&quot;:[&quot;ctrl&quot;,&quot;alt&quot;,&quot;cmd&quot;,&quot;,&quot;]<br/>  }<br/>}"]:::stored
+    end
+
+    subgraph S3 [Engine shape — obj.syncGroups]
+        ENG["{<br/>  {1, 2},<br/>  {4}<br/>}"]:::runtime
+    end
+
+    UI -->|same membership;<br/>no conversion| JSON
+    JSON -->|groupOfToGroups| ENG
+    ENG -->|groupsToGroupOf<br/>only on first-run seed| JSON
+
+    Conv1{{"Conversion is one-way at runtime:<br/>JSON is canonical, engine is derived.<br/>list-of-lists never mutated by hand."}}:::conv
+
+    JSON -.- Conv1
+
+    %% Constraint annotation
+    Note1["Single-group constraint is structural:<br/>groupOf is a map keyed by position.<br/>A position can have ONE group letter.<br/>Cannot represent overlap by construction."]
+    UI -.- Note1
+
+    %% Independent concern
+    subgraph S4 [Separate concern — workspace names]
+        Names["hs.settings: SpacesSync.spaceNames<br/><br/>{<br/>  &quot;1,2&quot;: { 1: &quot;Notes&quot;, 2: &quot;Music&quot; },<br/>  &quot;4&quot;: { 1: &quot;Email&quot; }<br/>}<br/><br/>Keyed by sorted group positions.<br/>Not migrated to JSON in v1."]:::separate
+    end
+
+    JSON -.->|group key derived from groupOf<br/>→ name lookup| Names

@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpacesSync — Settings pane mockup</title>
+<style>
+  /* Color tokens lifted from init.lua's canvas popup so the settings pane
+     reads as the same product. COLOR_PANEL_FILL → --panel-fill, etc. */
+  :root {
+    --bg-page: #1a1a1c;
+    --panel-fill: rgba(30, 30, 32, 0.92);
+    --panel-stroke: rgba(255, 255, 255, 0.10);
+    --row-fill: rgba(255, 255, 255, 0.03);
+    --row-fill-hover: rgba(255, 255, 255, 0.06);
+    --text-primary: rgba(255, 255, 255, 1.0);
+    --text-secondary: rgba(255, 255, 255, 0.58);
+    --text-tertiary: rgba(255, 255, 255, 0.42);
+    --text-disabled: rgba(255, 255, 255, 0.32);
+    --accent-blue: rgb(10, 132, 255);     /* macOS system blue */
+    --accent-blue-fade: rgba(10, 132, 255, 0.22);
+    --warn: #d4a853;
+    --warn-bg: rgba(212, 168, 83, 0.12);
+    --group-a: #4caf50;
+    --group-b: #ce93d8;
+    --group-c: #ffb74d;
+    --group-d: #4dd0e1;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  h1.caption {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    margin: 0;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* The settings pane — modeled on the existing popup canvas:
+     dark fill, 14px corner radius, hairline stroke. */
+  .pane {
+    width: 580px;
+    background: var(--panel-fill);
+    border: 1px solid var(--panel-stroke);
+    border-radius: 14px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    overflow: visible; /* let tooltips escape */
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--panel-stroke);
+  }
+  .titlebar .traffic { display: flex; gap: 8px; margin-right: 16px; }
+  .traffic span {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+  }
+  .titlebar h2 {
+    font-size: 15px; font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+    flex: 1;
+    text-align: center;
+    margin-right: 60px;
+  }
+
+  .body { padding: 20px 24px 8px; }
+
+  /* Section header */
+  h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin: 22px 0 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  h3:first-child { margin-top: 0; }
+
+  /* Toggle/action rows. Same shell, different innards. */
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--row-fill);
+    border-radius: 10px;
+    gap: 16px;
+  }
+  .row + .row { margin-top: 8px; }
+  .row .label { font-size: 14px; font-weight: 500; }
+  .row .sublabel {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+  .row.master { border: 1px solid rgba(10, 132, 255, 0.20); }
+
+  /* iOS-style toggle */
+  .switch {
+    position: relative;
+    width: 44px; height: 26px;
+    border-radius: 13px;
+    background: var(--accent-blue);
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 20px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: left 0.15s ease;
+  }
+  .switch.off { background: rgba(120, 120, 128, 0.32); }
+  .switch.off::after { left: 2px; }
+
+  /* Sync-now button */
+  .btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(10, 132, 255, 0.16);
+    border: 1px solid rgba(10, 132, 255, 0.36);
+    color: var(--accent-blue);
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-action .kbd {
+    color: var(--text-tertiary);
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+
+  /* Inset rounded panels for grouped lists.
+     overflow:visible so the dropdown menu in Group Membership can
+     escape the panel bounds. Child rows have no backgrounds of their
+     own, so the rounded panel corners still display cleanly. */
+  .inset {
+    background: var(--row-fill);
+    border-radius: 10px;
+    overflow: visible;
+  }
+
+  /* Detected Displays — pure reference list */
+  .detected-row {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--panel-stroke);
+    align-items: start;
+  }
+  .detected-row:last-child { border-bottom: none; }
+  .detected-row .pos {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-align: right;
+    padding-top: 1px;
+  }
+  .detected-row .name { font-size: 13px; color: var(--text-primary); }
+  .detected-row .uuid {
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  .footnote {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin: 6px 4px 0;
+    line-height: 1.5;
+  }
+  .footnote .info { color: var(--accent-blue); margin-right: 4px; }
+
+  /* Sync Groups — editable rows */
+  .group-row {
+    display: grid;
+    grid-template-columns: 100px 1fr auto;
+    gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--panel-stroke);
+    align-items: center;
+  }
+  .group-row:last-child { border-bottom: none; }
+  .group-row .pos {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    text-align: right;
+  }
+  .group-row .display-name { font-size: 13px; color: var(--text-secondary); }
+
+  .group-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    min-width: 110px;
+  }
+  .group-select .chip {
+    width: 14px; height: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .group-select .caret {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 10px;
+  }
+  .chip.a { background: var(--group-a); }
+  .chip.b { background: var(--group-b); }
+  .chip.c { background: var(--group-c); }
+  .chip.d { background: var(--group-d); }
+  .chip.none {
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.32);
+  }
+
+  .stale-warn {
+    color: var(--warn);
+    font-size: 12px;
+    background: var(--warn-bg);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  /* Open dropdown menu — overlays the row, anchored to the selector */
+  .group-row { position: relative; } /* anchor for the open menu */
+  .menu {
+    position: absolute;
+    right: 16px;
+    top: 38px;
+    min-width: 220px;
+    background: rgba(38, 38, 40, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    padding: 4px;
+    z-index: 50;
+    backdrop-filter: blur(20px);
+  }
+  .menu-item {
+    display: grid;
+    grid-template-columns: 18px 18px 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 12.5px;
+    color: var(--text-primary);
+  }
+  .menu-item.selected {
+    background: var(--accent-blue);
+    color: white;
+  }
+  .menu-item.selected .checkmark { color: white; }
+  .menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+  .menu-item .checkmark {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    text-align: center;
+  }
+  .menu-item .members {
+    color: var(--text-tertiary);
+    font-size: 11.5px;
+    margin-left: 6px;
+  }
+  .menu-item.selected .members {
+    color: rgba(255, 255, 255, 0.78);
+  }
+  .menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.10);
+    margin: 4px 2px;
+  }
+  .menu-item.create {
+    color: var(--accent-blue);
+  }
+  .menu-item.create .chip { border: 1px dashed rgba(10, 132, 255, 0.4); background: transparent; }
+
+  /* Timing fields with info icons */
+  .timing-grid {
+    display: grid;
+    grid-template-columns: 1fr 90px 30px;
+    gap: 8px 14px;
+    align-items: center;
+    padding: 4px 4px;
+  }
+  .timing-grid .timing-label {
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .timing-grid input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 5px 8px;
+    font-size: 13px;
+    font-family: "SF Mono", "Menlo", monospace;
+    text-align: right;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .timing-grid .unit {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  /* Hotkeys section — one row per bindable action.
+     Each row: action label + sublabel + kbd cell + reset link.
+     The kbd cell is the macOS-style editable shortcut button:
+       static  — shows the bound combo, hover hints editability
+       hover   — outlines in accent-blue
+       record  — replaces text with "Press shortcut…" + cancel ✕
+     Modifier symbols: ⌃ ctrl  ⌥ opt  ⌘ cmd  ⇧ shift */
+  .hotkey-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--panel-stroke);
+  }
+  .hotkey-row:last-child { border-bottom: none; }
+  .hotkey-row .label { font-size: 13px; color: var(--text-primary); }
+  .hotkey-row .sublabel {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+  .kbd-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    min-width: 78px;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .kbd-cell:hover {
+    border-color: rgba(10, 132, 255, 0.5);
+    background: rgba(10, 132, 255, 0.06);
+  }
+  .kbd-cell.recording {
+    border-color: var(--accent-blue);
+    background: rgba(10, 132, 255, 0.16);
+    color: var(--accent-blue);
+    font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.35); }
+    50%      { box-shadow: 0 0 0 4px rgba(10, 132, 255, 0); }
+  }
+  .kbd-cell .cancel-rec {
+    color: var(--text-tertiary);
+    margin-left: 4px;
+    font-size: 11px;
+  }
+  .kbd-reset {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: none;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  .kbd-reset:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .kbd-cell.empty {
+    color: var(--text-tertiary);
+    font-style: italic;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+  }
+
+  /* Info-icon tooltip — pure CSS, dark theme. Hover the icon to see. */
+  .info-tip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-left: 6px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    cursor: help;
+    position: relative;
+    user-select: none;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  .info-tip:hover {
+    color: var(--accent-blue);
+    border-color: rgba(10, 132, 255, 0.5);
+  }
+  .info-tip::before { content: "i"; font-style: italic; font-weight: 600; font-size: 10px; }
+  .info-tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    padding: 10px 12px;
+    background: rgba(20, 20, 22, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.5;
+    font-style: normal;
+    font-weight: 400;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+    z-index: 100;
+  }
+  .info-tip:hover::after { opacity: 1; visibility: visible; }
+
+  /* Footer / action buttons */
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 24px 18px;
+    border-top: 1px solid var(--panel-stroke);
+    margin-top: 14px;
+  }
+  .btn {
+    padding: 7px 18px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn.cancel {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+  }
+  .btn.apply {
+    background: var(--accent-blue);
+    color: white;
+  }
+
+  /* Annotation captions on the side */
+  .annotated {
+    display: grid;
+    grid-template-columns: 580px 300px;
+    gap: 32px;
+    align-items: start;
+  }
+  .callouts {
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.6;
+    padding-top: 60px;
+  }
+  .callouts h4 {
+    color: var(--text-primary);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 18px 0 6px;
+    font-weight: 600;
+  }
+  .callouts h4:first-child { margin-top: 0; }
+  .callouts code {
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 11.5px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<h1 class="caption">SpacesSync — proposed settings pane</h1>
+
+<div class="annotated">
+  <div class="pane">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <h2>SpacesSync</h2>
+    </div>
+
+    <div class="body">
+
+      <!-- ============================================================
+           General — master switch governs the whole Spoon
+           ============================================================ -->
+      <h3>General</h3>
+      <div class="row master">
+        <div>
+          <div class="label">SpacesSync active</div>
+          <div class="sublabel">
+            Master switch. When off, hotkeys (rename, Space picker), the
+            post-switch popup, the status HUD, and sync are all dormant.
+          </div>
+        </div>
+        <div class="switch" title="active = true"></div>
+      </div>
+
+      <!-- ============================================================
+           Detected Displays — read-only inventory
+           ============================================================ -->
+      <h3>Detected Displays</h3>
+      <div class="inset">
+        <div class="detected-row">
+          <div class="pos">position 1</div>
+          <div>
+            <div class="name">LG SDQHD #1</div>
+            <div class="uuid">37D8832A-2D06-409F-AC25-FB506C3CCBA1</div>
+          </div>
+        </div>
+        <div class="detected-row">
+          <div class="pos">position 2</div>
+          <div>
+            <div class="name">LG SDQHD #2</div>
+            <div class="uuid">4A3B7E94-1F8E-4D0A-B8C2-9E1F2A6B5D31</div>
+          </div>
+        </div>
+        <div class="detected-row">
+          <div class="pos">position 3</div>
+          <div>
+            <div class="name">LG SDQHD #3</div>
+            <div class="uuid">8E0F9C12-3D5A-4B2E-A7C9-1D2F8B4E6A50</div>
+          </div>
+        </div>
+        <div class="detected-row">
+          <div class="pos">position 4</div>
+          <div>
+            <div class="name">LG SDQHD #4</div>
+            <div class="uuid">2B5A1E76-4F8C-4D9A-B8E1-7C3F5D2A9B40</div>
+          </div>
+        </div>
+      </div>
+      <div class="footnote">
+        <span class="info">ⓘ</span>
+        Groups are by position. Reordering displays in System Settings will reshuffle group membership.
+      </div>
+
+      <!-- ============================================================
+           Group Membership — per-display assignment, no separate
+           "groups" list. Groups are implicit: created via the dropdown
+           "+ New group" item, dissolved when their last member leaves.
+           ============================================================ -->
+      <h3>Group Membership</h3>
+      <div class="inset">
+        <div class="group-row">
+          <div class="pos">position 1</div>
+          <div class="display-name">LG SDQHD #1</div>
+          <div class="group-select">
+            <span class="chip a"></span><span>Group A</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+        <div class="group-row">
+          <div class="pos">position 2</div>
+          <div class="display-name">LG SDQHD #2</div>
+          <div class="group-select">
+            <span class="chip a"></span><span>Group A</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+        <!-- Position 3 demonstrates the dropdown OPEN so the option
+             layout is visible. The list shows current groups (with
+             member counts), then a divider, then "+ New group (C)". -->
+        <div class="group-row">
+          <div class="pos">position 3</div>
+          <div class="display-name">LG SDQHD #3</div>
+          <div class="group-select" style="border-color: var(--accent-blue); background: rgba(10,132,255,0.08);">
+            <span class="chip none"></span>
+            <span style="color: var(--text-tertiary)">— None</span>
+            <span class="caret" style="color: var(--accent-blue)">▴</span>
+          </div>
+          <div class="menu" role="menu">
+            <div class="menu-item selected">
+              <span class="checkmark">✓</span>
+              <span class="chip none"></span>
+              <span>— None</span>
+            </div>
+            <div class="menu-item">
+              <span class="checkmark"></span>
+              <span class="chip a"></span>
+              <span>Group A <span class="members">— positions 1, 2</span></span>
+            </div>
+            <div class="menu-item">
+              <span class="checkmark"></span>
+              <span class="chip b"></span>
+              <span>Group B <span class="members">— position 4</span></span>
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item create">
+              <span class="checkmark"></span>
+              <span class="chip"></span>
+              <span>+ New group (C)</span>
+            </div>
+          </div>
+        </div>
+        <div class="group-row">
+          <div class="pos">position 4</div>
+          <div class="display-name">LG SDQHD #4</div>
+          <div class="group-select">
+            <span class="chip b"></span><span>Group B</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+        <div class="group-row">
+          <div class="pos">position 5</div>
+          <div class="display-name" style="color: var(--text-disabled); font-style: italic">not connected</div>
+          <div class="stale-warn">⚠ in config, not detected</div>
+        </div>
+      </div>
+      <div class="footnote" style="margin-top: 10px;">
+        Groups are created implicitly by assigning a display to <em>+ New group</em>.
+        When the last member leaves a group, the group disappears on Apply.
+      </div>
+
+      <!-- ============================================================
+           Sync mode — separate from master, planned for two modes
+           ============================================================ -->
+      <h3>Sync</h3>
+      <div class="row">
+        <div>
+          <div class="label">Auto-sync on Space change</div>
+          <div class="sublabel">
+            When on, the watcher mirrors every Space switch across each group.
+            When off, displays move independently — use <em>Sync Now</em> to re-align.
+          </div>
+        </div>
+        <div class="switch" title="autoSync = true"></div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">Sync now</div>
+          <div class="sublabel">
+            One-shot: bring all displays in each group to the trigger display's
+            current Space index. Works with Auto-sync on or off.
+          </div>
+        </div>
+        <button class="btn-action">
+          Sync Now
+          <span class="kbd">⌃⌥⌘S</span>
+        </button>
+      </div>
+
+      <!-- ============================================================
+           Timing — each field gets an info-tip explaining the why
+           ============================================================ -->
+      <h3>Timing</h3>
+      <div class="timing-grid">
+        <span class="timing-label">
+          Switch delay
+          <span class="info-tip" data-tip="Pause between each gotoSpace() call when syncing across displays. macOS silently drops back-to-back Space switches if they fire too close together — 0.3s is the verified-stable threshold. Lowering risks dropped switches; raising slows multi-display sync. Default: 0.3s."></span>
+        </span>
+        <input type="text" value="0.30">
+        <span class="unit">s</span>
+
+        <span class="timing-label">
+          Debounce
+          <span class="info-tip" data-tip="After a sync chain completes, ignore Space-change events for this many seconds. Prevents the watcher from reacting to its own programmatic switches and looping. Covers the typical Mission Control animation window. Default: 0.8s."></span>
+        </span>
+        <input type="text" value="0.80">
+        <span class="unit">s</span>
+
+        <span class="timing-label">
+          Popup duration
+          <span class="info-tip" data-tip="How long the Space-names popup stays visible — the panel listing every Space on a display with its index and name (e.g. ‘1: Notes, 2: Music’). Shown after a sync, after independent-display switches, and via the picker hotkey. Default: 2s."></span>
+        </span>
+        <input type="text" value="2.0">
+        <span class="unit">s</span>
+
+        <span class="timing-label">
+          Status HUD duration
+          <span class="info-tip" data-tip="How long the single-line ‘SpacesSync: ON / OFF’ banner stays visible when the Spoon starts, stops, or toggles. Different from the popup — this is the wider, centered status indicator. Default: 3s."></span>
+        </span>
+        <input type="text" value="3.0">
+        <span class="unit">s</span>
+      </div>
+
+      <!-- ============================================================
+           Hotkeys — bindable shortcuts. Click a kbd cell to re-record;
+           Esc cancels. Reset link restores the default for that row.
+           ============================================================ -->
+      <h3>Hotkeys</h3>
+      <div class="inset">
+        <div class="hotkey-row">
+          <div>
+            <div class="label">Toggle SpacesSync</div>
+            <div class="sublabel">Flip the master switch on/off.</div>
+          </div>
+          <span class="kbd-cell">⌃ ⌥ ⌘ Y</span>
+          <a class="kbd-reset" title="Restore default">Reset</a>
+        </div>
+        <div class="hotkey-row">
+          <div>
+            <div class="label">Open Space picker</div>
+            <div class="sublabel">List Spaces on the active display, navigate with arrows.</div>
+          </div>
+          <span class="kbd-cell">⌃ ⌥ ⌘ N</span>
+          <a class="kbd-reset" title="Restore default">Reset</a>
+        </div>
+        <div class="hotkey-row">
+          <div>
+            <div class="label">Rename current Space</div>
+            <div class="sublabel">Set a name for the active Space (scoped to its sync group).</div>
+          </div>
+          <span class="kbd-cell">⌃ ⌥ ⌘ R</span>
+          <a class="kbd-reset" title="Restore default">Reset</a>
+        </div>
+        <div class="hotkey-row">
+          <div>
+            <div class="label">Sync now</div>
+            <div class="sublabel">Bring siblings in each group to the trigger display's index.</div>
+          </div>
+          <span class="kbd-cell">⌃ ⌥ ⌘ S</span>
+          <a class="kbd-reset" title="Restore default">Reset</a>
+        </div>
+        <div class="hotkey-row">
+          <div>
+            <div class="label">Open settings</div>
+            <div class="sublabel">Open this pane. ⌘, mirrors the macOS Preferences convention.</div>
+          </div>
+          <span class="kbd-cell">⌃ ⌥ ⌘ ,</span>
+          <a class="kbd-reset" title="Restore default">Reset</a>
+        </div>
+      </div>
+      <div class="footnote" style="margin-top: 10px;">
+        Click a shortcut to re-record. Conflicts with other bindings are
+        flagged on Apply. Hotkeys are part of <code>SpacesSync.json</code>
+        — hand-editing works the same way.
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn cancel">Cancel</button>
+      <button class="btn apply">Apply</button>
+    </div>
+  </div>
+
+  <!-- Annotations on the side -->
+  <div class="callouts">
+    <h4>Two layers of "on"</h4>
+    The <strong>master</strong> switch governs everything the Spoon does
+    — rename, picker, popups, hotkeys, sync. <strong>Auto-sync</strong>
+    governs only the watcher: when off, the rest of the Spoon still
+    works, you just sync displays manually via <em>Sync Now</em>.
+
+    <h4>Why two display sections?</h4>
+    "Detected Displays" answers <em>what's plugged in right now</em> — pure
+    reference, regenerated on open. "Sync Groups" is the editable
+    assignment. UUID lives in the inventory only, where it disambiguates
+    identical models.
+
+    <h4>Groups are implicit</h4>
+    There's no separate "list of groups" — only a list of <em>displays</em>
+    and what each is assigned to. Groups come into existence when a
+    display picks <em>+ New group</em> and dissolve when the last member
+    leaves. No "create empty group" affordance, no orphans.
+
+    <h4>The single-group constraint</h4>
+    Each row's selector picks <em>one</em> group or <em>None</em>. The data
+    model is a <code>groupOf</code> map keyed by position, so overlap is
+    impossible by construction — not a runtime check.
+
+    <h4>Stale entries</h4>
+    Position 5 is in <code>SpacesSync.json</code> but no display sits there.
+    Surfaced as a warning instead of being silently dropped — leave it
+    (will activate on replug) or remove it.
+
+    <h4>Apply persists; pathwatcher hot-reloads</h4>
+    Apply writes <code>~/.hammerspoon/SpacesSync.json</code> and re-runs
+    the spoon's setup. Hand-editing the JSON triggers the same path via
+    <code>hs.pathwatcher</code> — both surfaces converge on the same code.
+
+    <h4>Tooltips, not docs</h4>
+    Each timing field has a hover-info tooltip that explains the <em>why</em>,
+    not just the what. The numbers exist to compensate for specific macOS
+    behaviors — the user shouldn't have to read source comments to know
+    why 0.3s and not 0.1s.
+
+    <h4>Hotkeys live with the rest of config</h4>
+    Bindings persist in <code>SpacesSync.json</code> alongside groups
+    and timing — same hand-edit + GUI surfaces, same hot-reload via
+    <code>hs.pathwatcher</code>. Sync Now keeps its inline kbd hint on
+    the control panel; the Hotkeys section is where the actual binding
+    is changed. Click a cell to re-record, Esc to cancel.
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,64 @@
+---
+title: SpacesSync — C4 Level 3 (Component) — roadmap with config layer + settings pane
+---
+flowchart TB
+    classDef public fill:#1168bd,stroke:#0e5aa7,color:#fff,stroke-width:2px
+    classDef internal fill:#438dd5,stroke:#2e6da4,color:#fff,stroke-width:1.5px
+    classDef proposed fill:#2e7d32,stroke:#4caf50,color:#fff,stroke-width:2px,stroke-dasharray: 4 2
+    classDef external fill:#999,stroke:#666,color:#fff,stroke-width:1.5px
+    classDef config fill:#5a4a1e,stroke:#d4a853,color:#fff,stroke-width:1.5px
+    classDef store fill:#3a2d52,stroke:#7b5fb0,color:#fff,stroke-width:1.5px
+
+    User([User]):::public
+
+    subgraph Spoon [SpacesSync.spoon]
+        API[Public API<br/>:start :stop :toggle<br/>:openSettings ＊new＊<br/>:bindHotkeys]:::public
+
+        subgraph Engine [Existing engine]
+            Watcher[Watcher<br/>hs.spaces.watcher]:::internal
+            SyncEng[Sync Engine<br/>chained gotoSpace<br/>+ debounce]:::internal
+            PosMap[Position Map<br/>UUID ↔ position]:::internal
+            GroupLook[Group Lookup<br/>getTargetsFor]:::internal
+            Names[Name Store<br/>per-group<br/>workspace names]:::internal
+            UI[Popup / Picker /<br/>Status HUD<br/>hs.canvas + eventtap]:::internal
+        end
+
+        subgraph New [Proposed]
+            ConfigMod[Config Module<br/>config.lua<br/>load / save / validate<br/>pathwatcher<br/>groupOf ↔ syncGroups]:::proposed
+            SettingsPane[Settings Pane<br/>hs.webview<br/>HTML form + JS bridge]:::proposed
+        end
+    end
+
+    JSON[(SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊new＊ canonical config:<br/>enabled, groupOf,<br/>timing, _detected)]:::config
+    Plist[(hs.settings plist<br/><br/>workspace names<br/>＊unchanged＊)]:::store
+    HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json]:::external
+
+    User -->|hotkeys| API
+    User -->|opens| SettingsPane
+    User -->|hand-edits| JSON
+
+    API -->|on :start: seed,<br/>load, applyToSpoon,<br/>startWatching| ConfigMod
+    API -->|reads runtime fields<br/>populated by config| Engine
+    SettingsPane <-->|JS↔Lua<br/>loadState applyState| ConfigMod
+
+    ConfigMod -->|reads/writes| JSON
+    ConfigMod -->|hs.pathwatcher<br/>hot-reload on edit| JSON
+
+    Watcher -->|fires on Space change| SyncEng
+    SyncEng --> GroupLook
+    GroupLook --> PosMap
+    SyncEng --> UI
+    Names --> UI
+    Names <-->|persists| Plist
+
+    Engine --> HSAPIs
+    UI --> HSAPIs
+    ConfigMod --> HSAPIs
+    SettingsPane --> HSAPIs
+
+    %% Legend
+    subgraph Legend [Legend]
+        direction LR
+        L1[existing]:::internal
+        L2[proposed]:::proposed
+    end

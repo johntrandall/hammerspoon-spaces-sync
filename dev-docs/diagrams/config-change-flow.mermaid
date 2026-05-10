@@ -1,0 +1,55 @@
+---
+title: SpacesSync — config change flow (proposed)
+---
+sequenceDiagram
+    autonumber
+    actor User
+    participant GUI as Settings Pane<br/>(hs.webview)
+    participant Cfg as config.lua
+    participant JSON as SpacesSync.json
+    participant PW as hs.pathwatcher
+    participant Spoon as SpacesSync<br/>(engine)
+    participant Watcher as hs.spaces.watcher
+
+    Note over User,Watcher: Two entry points, one convergent path.
+
+    rect rgba(46,125,50,0.10)
+        Note over User,JSON: Path A — User edits via GUI
+        User->>GUI: open via ⌃⌥⌘, (or :openSettings)
+        GUI->>Cfg: loadState
+        Cfg->>JSON: read
+        JSON-->>Cfg: parsed state
+        Cfg-->>GUI: { enabled, groupOf, timing, detectedDisplays }
+        GUI-->>User: render form
+        User->>GUI: edit groupOf, click Apply
+        GUI->>Cfg: applyState(newState)
+        Cfg->>JSON: save (regenerates _detected)
+        Note right of Cfg: lastWriteHash recorded<br/>so pathwatcher ignores echo
+    end
+
+    rect rgba(212,168,83,0.10)
+        Note over User,JSON: Path B — User edits the JSON by hand
+        User->>JSON: vim / VSCode / etc.
+        JSON->>PW: file changed event
+        PW->>Cfg: pathwatcher callback
+        Cfg->>JSON: read
+        JSON-->>Cfg: parsed state
+        Note right of Cfg: hash != lastWriteHash<br/>→ real external edit
+    end
+
+    Note over Cfg,Watcher: Convergent: both paths end here.
+
+    Cfg->>Spoon: applyToSpoon(state)
+    Note right of Spoon: spoon.syncGroups,<br/>switchDelay, etc.<br/>updated in-place
+    Cfg->>Spoon: _applyConfig(state)
+
+    alt enabled changed false → true
+        Spoon->>Watcher: setupWatcher
+        Spoon-->>User: Status HUD "ON"
+    else enabled changed true → false
+        Spoon->>Watcher: stopWatcher
+        Spoon-->>User: Status HUD "OFF"
+    else groups changed (still enabled)
+        Spoon->>Spoon: rebuildPositionMap
+        Note right of Spoon: lastActiveSpaces re-snapped<br/>so watcher baseline reflects<br/>new group membership
+    end
