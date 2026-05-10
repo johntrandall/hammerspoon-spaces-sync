@@ -140,6 +140,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    white-space: nowrap;
     background: rgba(10, 132, 255, 0.16);
     border: 1px solid rgba(10, 132, 255, 0.36);
     color: var(--accent-blue);
@@ -270,6 +271,15 @@
     padding: 4px;
     z-index: 50;
     backdrop-filter: blur(20px);
+  }
+  /* Variant for an "open upward" demo — anchored to the BOTTOM of
+     the parent group-row so the menu's tail lands on rows above
+     (which are still readable in the static mock) instead of
+     occluding rows below (e.g. the stale-entry row at position 5). */
+  .menu-upward {
+    top: auto;
+    bottom: 38px;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
   }
   .menu-item {
     display: grid;
@@ -758,10 +768,11 @@
            ============================================================ -->
       <h3>Group Labels</h3>
       <div class="section-hint">
-        Each group has a default name (Group A, Group B, …). Set an
-        optional label to override the default — labeled groups display
-        as "Letter: Label" in the dropdown below. Letters are stable
-        IDs; labels are display-only.
+        Below, you'll assign each display to a group. Set an optional
+        label here to override the default name. Labeled groups display
+        as "Letter: Label"; unlabeled groups fall back to "Group A",
+        "Group B", and so on. Letters are stable IDs; labels are
+        display-only.
       </div>
       <div class="inset">
         <div class="label-row">
@@ -771,18 +782,18 @@
         </div>
         <div class="label-row">
           <span class="letter"><span class="chip b"></span>B</span>
-          <input class="label-input" type="text" value="" placeholder="Group B  (default)">
+          <input class="label-input" type="text" value="" placeholder="Group B (default)">
           <span class="member-count">1 display</span>
         </div>
         <div class="label-row dim">
           <span class="letter"><span class="chip c"></span>C</span>
-          <input class="label-input" type="text" value="Reference" placeholder="Group C  (default)">
-          <span class="member-count">empty</span>
+          <input class="label-input" type="text" value="Reference" placeholder="Group C (default)">
+          <span class="member-count">— empty</span>
         </div>
         <div class="label-row dim">
           <span class="letter"><span class="chip d"></span>D</span>
-          <input class="label-input" type="text" value="" placeholder="Group D  (default)">
-          <span class="member-count">empty</span>
+          <input class="label-input" type="text" value="" placeholder="Group D (default)">
+          <span class="member-count">— empty</span>
         </div>
         <div class="label-row">
           <div class="show-more">▾ Show 6 more groups (E – J)</div>
@@ -817,24 +828,28 @@
             <span class="caret">▾</span>
           </div>
         </div>
-        <!-- Position 3 demonstrates the dropdown OPEN. The list shows
-             "— None", then groups currently in use (member counts),
-             a divider, then unused groups (collapsed at bottom). All
-             10 letters are always available; no "+ New group" needed. -->
         <div class="group-row">
           <div class="pos">position 3</div>
           <div class="display-name">LG SDQHD #3</div>
-          <div class="group-select" style="border-color: var(--accent-blue); background: rgba(10,132,255,0.08);">
+          <div class="group-select">
             <span class="chip none"></span>
             <span style="color: var(--text-tertiary)">— None</span>
+            <span class="caret">▾</span>
+          </div>
+        </div>
+        <!-- Position 4 demonstrates the dropdown OPEN, rendered UPWARD
+             so the menu lands on rows 1-3 (which the user can read past)
+             rather than occluding the stale row at position 5 below. -->
+        <div class="group-row">
+          <div class="pos">position 4</div>
+          <div class="display-name">LG SDQHD #4</div>
+          <div class="group-select" style="border-color: var(--accent-blue); background: rgba(10,132,255,0.08);">
+            <span class="chip b"></span><span>Group B</span>
             <span class="caret" style="color: var(--accent-blue)">▾</span>
           </div>
-          <!-- Pool of 10 letters always exists (A-J). Labeled groups
-               show their label after the letter; unlabeled show
-               "Group X". Empty groups (no members) appear at the end. -->
-          <div class="menu" role="menu">
-            <div class="menu-item selected">
-              <span class="checkmark">✓</span>
+          <div class="menu menu-upward" role="menu">
+            <div class="menu-item">
+              <span class="checkmark"></span>
               <span class="chip none"></span>
               <span>— None</span>
             </div>
@@ -843,8 +858,8 @@
               <span class="chip a"></span>
               <span>A: Code <span class="members">— positions 1, 2</span></span>
             </div>
-            <div class="menu-item">
-              <span class="checkmark"></span>
+            <div class="menu-item selected">
+              <span class="checkmark">✓</span>
               <span class="chip b"></span>
               <span>Group B <span class="members">— position 4</span></span>
             </div>
@@ -864,14 +879,6 @@
               <span class="chip none"></span>
               <span>Groups E – J <span class="members">— empty</span></span>
             </div>
-          </div>
-        </div>
-        <div class="group-row">
-          <div class="pos">position 4</div>
-          <div class="display-name">LG SDQHD #4</div>
-          <div class="group-select">
-            <span class="chip b"></span><span>Group B</span>
-            <span class="caret">▾</span>
           </div>
         </div>
         <!-- Stale entry: position 5 was assigned to a group in
@@ -938,7 +945,7 @@
           Switch delay
           <button type="button" class="info-tip" aria-label="What is Switch delay?" aria-expanded="false">
             <span class="info-tip__popover" role="tooltip">
-              Pause between each <code>gotoSpace()</code> call when syncing
+              Pause between each Space switch when syncing
               across displays. macOS silently drops back-to-back Space
               switches if they fire too close together — 0.3s is the
               verified-stable threshold. Lowering risks dropped switches;
@@ -1063,20 +1070,13 @@
   <!-- Annotations on the side -->
   <div class="callouts">
     <h4>Two layers of "on"</h4>
-    <strong>Enable SpacesSync</strong> is the master switch — governs
-    hotkeys, the popup, the picker, the status HUD, and sync.
-    <strong>Sync mode</strong>
-    is independent: <em>Automatic</em> syncs Space switches live,
-    <em>Manual</em> leaves displays free and uses <em>Sync Now</em>
-    to bring them together.
+    The master switch and sync mode are deliberately independent so
+    you can keep the rest of the spoon's affordances — picker, rename,
+    popups — even when you don't want auto-syncing. Disabling
+    everything is a single click; freezing only the sync watcher is a
+    segmented control away.
 
-    <h4>Autosave, no Apply</h4>
-    Every change live-commits to <code>SpacesSync.json</code>, matching
-    macOS System Settings since Ventura. Combined with hot-reload via
-    <code>hs.pathwatcher</code>, the GUI and a text editor are
-    interchangeable surfaces — neither one needs an Apply button.
-
-    <h4>Why two display sections?</h4>
+<h4>Why two display sections?</h4>
     "Detected Displays" answers <em>what's plugged in right now</em> — pure
     reference, regenerated on open. "Sync Groups" is the editable
     assignment. UUID lives in the inventory only, where it disambiguates
@@ -1087,9 +1087,8 @@
     through J) always exists; users just decide which to populate.
     Empty groups remain in the pool and can hold a label even with
     no members. This sidesteps a class of lifecycle bugs (no "next
-    unused letter," no retirement state, no dissolution events) and
-    matches the realistic ceiling — Mac Studio Ultra tops out around
-    8 displays, so 10 is generous buffer.
+    unused letter," no retirement state, no dissolution events) —
+    more than enough for any current Mac with comfortable buffer.
 
     <h4>Letter is identity, label is display</h4>
     The letter (A, B, C …) is the stable internal ID — it appears
@@ -1106,10 +1105,11 @@
 
     <h4>Stale entries with memory</h4>
     Position 5 is in <code>SpacesSync.json</code> but no display sits
-    there. We remember the display's name, UUID, and last-seen date in a
-    <code>_lastSeen</code> map, so the warning is "LG SDQHD #5, last
-    seen 2026-04-12" — actionable rather than anonymous. Replug and the
-    entry rejoins; remove it to forget.
+    there. We remember the display's name, UUID, last-seen date, and
+    <em>which group it was in</em> via the <code>_lastSeen</code> map,
+    so the warning is "LG SDQHD #5, last seen 2026-04-12, was in A:
+    Code" — actionable rather than anonymous. Replug and the entry
+    rejoins.
 
     <h4>Environment-precondition banner</h4>
     The red banner at the top fires when "Displays have separate Spaces"
@@ -1130,10 +1130,9 @@
 
     <h4>Hotkeys live with the rest of config</h4>
     Bindings persist in <code>SpacesSync.json</code> alongside groups
-    and timing — same hand-edit + GUI surfaces, same hot-reload via
-    <code>hs.pathwatcher</code>. Sync Now keeps its inline kbd hint on
-    the control panel; the Hotkeys section is where the actual binding
-    is changed. Click a cell to re-record, Esc to cancel.
+    and timing — same hand-edit + GUI surfaces. Sync Now keeps its
+    inline kbd hint on the control panel as a discoverability cue;
+    the Hotkeys section is where the actual binding is changed.
   </div>
 </div>
 

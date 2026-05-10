@@ -19,7 +19,7 @@ sequenceDiagram
         GUI->>Cfg: loadState
         Cfg->>JSON: read
         JSON-->>Cfg: parsed state
-        Cfg-->>GUI: enabled, syncMode, groupOf, etc.
+        Cfg-->>GUI: enabled, syncMode, groupOf, groupLabels, spaceNames, etc.
         User->>GUI: edit any field
         GUI->>Cfg: applyState newState
         Cfg->>JSON: save
@@ -82,9 +82,13 @@ sequenceDiagram
         Note right of Spoon: hs.screen.watcher fires
         Spoon->>Spoon: diff prev vs current screens
         alt display disconnected
-            Spoon->>Cfg: writeLastSeen position name uuid date
+            Spoon->>Cfg: writeLastSeen position name uuid date wasIn
             Cfg->>JSON: save (sparse _lastSeen update only)
         else display connected
             Spoon->>Spoon: rebuildPositionMap<br/>position rejoins groupOf if previously assigned
+            opt _lastSeen entry exists for this position
+                Spoon->>Cfg: clearLastSeen position
+                Cfg->>JSON: save (drop the stale entry)
+            end
         end
     end

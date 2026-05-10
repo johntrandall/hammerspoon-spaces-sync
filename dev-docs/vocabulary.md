@@ -69,7 +69,7 @@ Displays not in any sync group are **independent** — SpacesSync never moves th
 
 **Why 10:** more than enough for any current Mac with comfortable buffer. Max useful sync groups = ⌊displays / 2⌋ since each group needs at least 2 members to be meaningful. The fixed cap eliminates a class of edge cases — no "next unused letter" logic, no retired-letter tracking, no creation/dissolution events.
 
-**Default name:** every group has a default display name of `"Group <letter>"` — Group A, Group B, Group C, …, Group J. This is the fallback shown anywhere a group is rendered with no user-set label.
+**Default name:** every group has a default display name of `"Group <letter>"` — Group A, Group B, Group C, …, Group J. This is the fallback shown anywhere a group is rendered with no user-set label. **Pure UI render; no schema field.** Pseudocode helper: `displayName(letter) = groupLabels[letter] or "Group " .. letter`.
 
 **Custom label (optional):** each group can have an **optional** user-set label in `groupLabels` — a sparse map containing only entries for labeled groups. When a label exists, the group renders as `"<letter>: <label>"` (e.g. "A: Code"). When absent, it falls back to the default name (e.g. "Group A"). Labels are user-editable in the settings pane's Group Labels section.
 

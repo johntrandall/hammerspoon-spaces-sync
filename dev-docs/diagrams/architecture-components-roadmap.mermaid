@@ -30,9 +30,9 @@ flowchart TB
         end
     end
 
-    JSON[(SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊new＊ canonical config<br/>enabled, syncMode, groupOf,<br/>_lastSeen, timing, hotkeys)]:::config
-    Plist[(hs.settings plist<br/><br/>Space names<br/>＊migrated atomically＊<br/>on groupOf change)]:::store
-    HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json<br/>hs.shutdownCallback]:::external
+    JSON[("SpacesSync.json<br/>~/.hammerspoon/<br/><br/>＊canonical config＊<br/>enabled, syncMode, groupOf,<br/>groupLabels, spaceNames,<br/>_lastSeen — name, uuid, date, wasIn<br/>switchDelay, debounceSeconds,<br/>popupDuration, statusDuration,<br/>hotkeys")]:::config
+    Plist[(hs.settings plist<br/><br/>＊legacy＊<br/>pre-v3 Space names<br/>read once on first run,<br/>migrated into JSON spaceNames,<br/>then ignored)]:::store
+    HSAPIs[Hammerspoon APIs<br/>hs.spaces hs.screen hs.screen.watcher<br/>hs.canvas hs.webview<br/>hs.pathwatcher hs.json<br/>hs.shutdownCallback]:::external
 
     Shutdown[hs.shutdownCallback<br/>＊new＊ teardown<br/>delete webview<br/>unsubscribe userContent<br/>stop pathwatcher]:::proposed
 
@@ -59,7 +59,8 @@ flowchart TB
     GroupLook --> PosMap
     SyncEng --> UI
     Names --> UI
-    Names <-->|persists| Plist
+    Names -->|read by| ConfigMod
+    ConfigMod -->|spaceNames live in JSON now,<br/>Plist is migration-source only| JSON
 
     Engine --> HSAPIs
     UI --> HSAPIs
