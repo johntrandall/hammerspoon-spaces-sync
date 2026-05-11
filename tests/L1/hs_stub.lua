@@ -119,7 +119,6 @@ M.spaces = setmetatable({
   __index = function() return function() end end,  -- everything else: noop
 })
 M.application = noopNamespace()
-M.timer = noopNamespace()
 M.canvas = noopNamespace()
 M.styledtext = noopNamespace()
 M.dialog = noopNamespace()
@@ -127,6 +126,130 @@ M.mouse = noopNamespace()
 M.eventtap = noopNamespace()
 M.alert = noopNamespace()
 M.drawing = noopNamespace()
+M.webview = noopNamespace()
+M.shutdownCallback = nil  -- assignable; init.lua may set it
+
+-- hs.timer — minimal seedable stub. doAfter records its callback so
+-- config.lua's parse-retry path can be exercised without a runloop.
+do
+  local pendingTimers = {}
+  local function makeTimer(fn)
+    local t = { _fn = fn, _stopped = false }
+    function t:stop() t._stopped = true end
+    return t
+  end
+  M.timer = {
+    doAfter = function(_, fn)
+      local t = makeTimer(fn)
+      table.insert(pendingTimers, t)
+      return t
+    end,
+    absoluteTime = function() return 0 end,
+    secondsSinceEpoch = function() return os.time() end,
+    -- Test hooks.
+    _pending = function() return pendingTimers end,
+    _drain = function()
+      local snapshot = pendingTimers
+      pendingTimers = {}
+      for _, t in ipairs(snapshot) do
+        if not t._stopped then t._fn() end
+      end
+    end,
+    _reset = function() pendingTimers = {} end,
+  }
+  setmetatable(M.timer, { __index = function() return function() end end })
+end
+
+-- hs.hash — deterministic + collision-resistant enough for ring-buffer
+-- testing. We don't need real SHA256; we just need "same bytes → same
+-- digest, different bytes → different digest (with overwhelming
+-- probability)". 32-bit FNV-1a satisfies both for the handful of inputs
+-- L1 tests generate. Production calls real hs.hash.SHA256.
+M.hash = {
+  SHA256 = function(s)
+    s = tostring(s or "")
+    local h = 0x811c9dc5
+    local PRIME = 0x01000193
+    for i = 1, #s do
+      h = (h ~ s:byte(i)) & 0xffffffff
+      h = (h * PRIME) & 0xffffffff
+    end
+    return string.format("%08x", h)
+  end,
+}
+
+-- hs.json — round-trip stub. The L1 tests only need encode/decode to
+-- be lossless inverses on the shapes config.lua emits; they don't care
+-- that the wire format is real JSON. So we serialize to executable Lua
+-- table source and decode via `load()` in an empty sandbox. Production
+-- uses real Hammerspoon hs.json against true JSON; this preserves the
+-- contract config.lua depends on without us shipping a JSON parser in
+-- the test rig.
+do
+  local function isArray(t)
+    local n = 0
+    for k in pairs(t) do
+      n = n + 1
+      if type(k) ~= "number" or k ~= math.floor(k) or k < 1 then return false end
+    end
+    return n == #t
+  end
+
+  local function tableSrc(v)
+    local kind = type(v)
+    if kind == "nil" then return "nil" end
+    if kind == "boolean" then return v and "true" or "false" end
+    if kind == "number" then
+      if v ~= v then return "0/0" end
+      return string.format("%.14g", v)
+    end
+    if kind == "string" then return string.format("%q", v) end
+    if kind == "table" then
+      if next(v) == nil then return "{}" end
+      if isArray(v) then
+        local parts = {}
+        for _, item in ipairs(v) do parts[#parts + 1] = tableSrc(item) end
+        return "{" .. table.concat(parts, ",") .. "}"
+      end
+      local keys = {}
+      for k in pairs(v) do keys[#keys + 1] = k end
+      table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+      local parts = {}
+      for _, k in ipairs(keys) do
+        parts[#parts + 1] = "[" .. tableSrc(tostring(k)) .. "]=" .. tableSrc(v[k])
+      end
+      return "{" .. table.concat(parts, ",") .. "}"
+    end
+    error("hs.json stub: cannot encode " .. kind)
+  end
+
+  M.json = {
+    encode = function(v, _pretty) return "return " .. tableSrc(v) end,
+    decode = function(s)
+      if type(s) ~= "string" then error("hs.json: decode expects string") end
+      local chunk, err = load(s, "json-stub", "t", {})
+      if not chunk then error("hs.json stub decode failed: " .. tostring(err)) end
+      local ok, result = pcall(chunk)
+      if not ok then error("hs.json stub decode failed: " .. tostring(result)) end
+      return result
+    end,
+  }
+end
+
+-- hs.pathwatcher — stubbed callbacks. Tests can fire by hand.
+do
+  local registered = {}
+  M.pathwatcher = {
+    new = function(dir, cb)
+      local w = { _dir = dir, _cb = cb, _running = false }
+      function w:start() self._running = true; table.insert(registered, self); return self end
+      function w:stop() self._running = false; return self end
+      return w
+    end,
+    _reset = function() registered = {} end,
+    _registered = function() return registered end,
+  }
+end
 
 -- hs.settings — a real in-memory stub (not a noopNamespace) because
 -- nameForIndex / loadSpaceNames / saveSpaceNames test cases need to

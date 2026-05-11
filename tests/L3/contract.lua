@@ -33,26 +33,34 @@
 
 local M = {}
 
--- The 12 keys we expect from :status(), with the type or types each
+-- The 15 keys we expect from :status(), with the type or types each
 -- can be. lastVerifierResult is "table or nil" per the strategy doc.
+-- configPath is "string or nil" — nil before :init has run, set
+-- otherwise.
 local STATUS_SHAPE = {
-  enabled            = { "boolean" },
-  osBlocked          = { "boolean" },
-  syncInProgress     = { "boolean" },
-  chainGeneration    = { "number" },
-  activeChainTimers  = { "number" },
-  totalScreens       = { "number" },
-  positionMap        = { "table" },
-  syncGroups         = { "table" },
-  lastActiveSpaces   = { "table" },
-  lastVerifierResult = { "table", "nil" },
-  pollTimeout        = { "number" },
-  pollInterval       = { "number" },
+  enabled              = { "boolean" },
+  osBlocked            = { "boolean" },
+  syncInProgress       = { "boolean" },
+  chainGeneration      = { "number" },
+  activeChainTimers    = { "number" },
+  totalScreens         = { "number" },
+  positionMap          = { "table" },
+  syncGroups           = { "table" },
+  lastActiveSpaces     = { "table" },
+  lastVerifierResult   = { "table", "nil" },
+  pollTimeout          = { "number" },
+  pollInterval         = { "number" },
+  -- Settings-layer additions (v0.4):
+  syncMode             = { "string" },
+  pendingConfigStashed = { "boolean" },
+  configPath           = { "string", "nil" },
 }
 
 local PUBLIC_METHODS = {
   "start", "stop", "status", "isEnabled", "toggle",
   "bindHotkeys", "showNames", "renameCurrentSpace",
+  -- v0.4 additions:
+  "syncNow", "openSettings",
 }
 
 local function in_list(t, v)
@@ -205,6 +213,12 @@ function M.run()
   end
   if status.totalScreens < 1 then
     return "L3 FAIL: totalScreens < 1 (must have ≥ 1 display)"
+  end
+
+  -- syncMode is one of the two valid values.
+  if status.syncMode ~= "automatic" and status.syncMode ~= "manual" then
+    return "L3 FAIL: syncMode = " .. tostring(status.syncMode) ..
+           " is not 'automatic' or 'manual'"
   end
 
   return string.format(

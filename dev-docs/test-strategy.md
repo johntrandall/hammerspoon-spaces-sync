@@ -26,9 +26,9 @@ under the layout described below. Current coverage:
 | Level | Status | Tests |
 |-------|--------|-------|
 | L0    | green  | 4 guards (syntax, docs.json, version-sync, readme-links) |
-| L1    | green  | 53 unit tests across 7 helpers |
-| L3    | green  | 1 contract test (12-key `:status()` shape) |
-| L6    | green  | scenarios 01, 02, 03, 05, 06, 07, 08, 09, 10, 16, 24 (11 of 30 manual checklist scenarios automated) |
+| L1    | green  | 101 unit tests across 11 helpers (53 init.lua + 48 config.lua) |
+| L3    | green  | 1 contract test (15-key `:status()` shape; v0.4 adds syncMode, pendingConfigStashed, configPath) |
+| L6    | green  | scenarios 01, 02, 03, 05, 06, 07, 08, 09, 10, 16, 24, 30 (12 of 30 manual checklist scenarios automated; scenario-30 covers hot-reload via JSON edit and is the first L6 that doesn't dispatch gotoSpace) |
 | L6h   | green  | infrastructure ready; no scenarios currently registered (scenario-05 promoted to L6 once AppleScript-via-System-Events keystroke path was verified to drive Mission Control) |
 
 Run `tests/run.sh` for the default safe set (L0 + L3),
@@ -82,9 +82,9 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 | Level | Status | Rationale | Runner |
 |-------|--------|-----------|--------|
 | **L0** — Guards | ✅ Active | Repo conventions: lua syntax (via [luacheck] or `luac -p`; SKIP if neither on PATH), `docs.json` shape, version sync between `obj.version` and the latest release tag, README link integrity. Headless. Runs on any host without Hammerspoon. | `tests/run.sh L0` |
-| **L1** — Unit | ✅ Active | 53 tests across 7 helpers: stateless (`compareVersions`, `isLegacyFlatSchema`), module-state-dependent (`getGroupKey`, `getTargetsFor`, `getDisplayLabel`), `hs.settings`-backed (`nameForIndex` — via an in-memory `hs.settings` stub in `tests/L1/hs_stub.lua`), and `hs.spaces`/`hs.screen`-backed (`findChange` — via opt-in seedable stubs for `hs.spaces.spacesForScreen` and `hs.screen.find`). Implementation uses a minimal plain-Lua harness (per Deviations §1) and `debug.getupvalue` introspection on the loaded init.lua to access local helpers without modifying the source. State-dependent helpers are seeded via `debug.setupvalue` on `positionToUUID` / `uuidToPosition` / `totalScreens` / `namesLoaded` before each fixture. | `tests/run.sh L1` |
+| **L1** — Unit | ✅ Active | 101 tests across 11 helpers. **init.lua helpers (53):** stateless (`compareVersions`, `isLegacyFlatSchema`), module-state-dependent (`getGroupKey`, `getTargetsFor`, `getDisplayLabel`), `hs.settings`-backed (`nameForIndex` — via an in-memory `hs.settings` stub in `tests/L1/hs_stub.lua`), `hs.spaces`/`hs.screen`-backed (`findChange` — via opt-in seedable stubs for `hs.spaces.spacesForScreen` and `hs.screen.find`). **config.lua helpers (48):** `displayName`, `groupOfToGroups`, `groupsToGroupOf`, `validate`, the SHA-256 echo-suppression ring buffer (push/contains/eviction), load/save round-trip against a real tmp file, `writeLastSeen` / `clearLastSeen`, pathwatcher parse-retry counter, and self-write echo filtering. Implementation uses a minimal plain-Lua harness (per Deviations §1) and `debug.getupvalue` introspection on the loaded init.lua to access local helpers without modifying the source. `config.lua` is a separate module loaded via `tests/L1/config_loader.lua`. State-dependent helpers are seeded via `debug.setupvalue` on `positionToUUID` / `uuidToPosition` / `totalScreens` / `namesLoaded` before each fixture. | `tests/run.sh L1` |
 | **L2** — Integration | 🔄 Not yet | Scope is internal wiring within a component. The Spoon is a single file with no internal component boundaries that would benefit from intra-domain integration tests. | (n/a) |
-| **L3** — Contract | ✅ Active | Public API surface is small and stable: `:start`, `:stop`, `:status`, `:isEnabled`, `:toggle`, `:bindHotkeys`, `:showNames`, `:renameCurrentSpace`. Asserts methods exist with correct types and `:status()` returns the spec'd 12-key shape (see L3 Contract Spec below). Does NOT verify chaining (`return self`) — that would require calling stateful methods on the live Spoon. Test ASSUMES Spoon is already `:start()`-ed; SKIPs with an actionable message if not. Does NOT itself call `:start()` or `:stop()`. Runs inside Hammerspoon via `hs -c`; does NOT require multiple displays — single-display hosts get degenerate values (e.g. `positionMap = {[1] = uuid}`) but shape/type checks still pass. | `tests/run.sh L3` |
+| **L3** — Contract | ✅ Active | Public API surface: `:start`, `:stop`, `:status`, `:isEnabled`, `:toggle`, `:bindHotkeys`, `:showNames`, `:renameCurrentSpace`, `:syncNow`, `:openSettings` (last two added in v0.4 with the settings pane). Asserts methods exist with correct types and `:status()` returns the spec'd 15-key shape (see L3 Contract Spec below). Does NOT verify chaining (`return self`) — that would require calling stateful methods on the live Spoon. Test ASSUMES Spoon is already `:start()`-ed; SKIPs with an actionable message if not. Does NOT itself call `:start()` or `:stop()`. Runs inside Hammerspoon via `hs -c`; does NOT require multiple displays — single-display hosts get degenerate values (e.g. `positionMap = {[1] = uuid}`) but shape/type checks still pass. | `tests/run.sh L3` |
 | **L4** — Workflow | 🔄 Not yet | Multi-component user stories don't apply to a single-file Spoon. | (n/a) |
 | **L5** — E2E mocked | 🔄 Not yet | Mocking `hs.spaces.*` from inside Hammerspoon is possible but high-cost; the conceptual gap to L6 is small (just the actual `gotoSpace`). | (n/a) |
 | **L6** — E2E live | ✅ Active | The actual sync engine: dispatch → poll → verify → CLEAR. Runs inside Hammerspoon on a multi-display host. Drives a known `gotoSpace`, asserts on `state.lastVerifierResult.mismatches == {}` via `:status()`. **Will briefly switch Spaces on the test host's displays** (duration: see Operational Notes § SLEEP_BETWEEN sizing). See L6 Sub-Tiers section below for sub-tier breakdown. | `tests/run.sh L6` |
@@ -94,7 +94,7 @@ reference this table — do not restate ✅/🔄/❌ status symbols elsewhere.
 
 ## L3 Contract Spec
 
-The `:status()` return shape (12 keys; canonical authority is `obj:status()`
+The `:status()` return shape (15 keys; canonical authority is `obj:status()`
 in `Source/SpacesSync.spoon/init.lua` — if that method changes, this
 table must be updated alongside the L3 test):
 
@@ -112,6 +112,9 @@ table must be updated alongside the L3 test):
 | `lastVerifierResult` | table or nil | `{ timestamp, mismatches }`; each `mismatches[i]` has `{ uuid, kind }` where `kind` is `"wrong-space"` / `"vanished"` / `"appeared"`; entries with `kind == "wrong-space"` additionally have `expectedIdx` and `actualIdx` fields (other kinds do NOT have them — assert conditionally). Whole record is nil if no chain has run. |
 | `pollTimeout` | number | current `obj.pollTimeout` |
 | `pollInterval` | number | current `obj.pollInterval` |
+| `syncMode` | string | `"automatic"` (watcher armed) or `"manual"` (watcher dormant); v0.4 |
+| `pendingConfigStashed` | boolean | true if a config change is waiting for a sync chain to drain before applying; v0.4 |
+| `configPath` | string or nil | absolute path to `SpacesSync.json`; nil until the settings layer has initialized; v0.4 |
 
 ## L6 Sub-Tiers (single-machine adaptation)
 
