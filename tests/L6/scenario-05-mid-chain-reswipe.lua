@@ -197,26 +197,10 @@ function M.probe()
            "(need a sync group with 2+ connected displays, trigger having 3+ Spaces)"
   end
 
-  -- Bump pollInterval + pollTimeout so the chain stays in flight long
-  -- enough for the disrupt phase to catch it. Save originals for assert_
-  -- to restore.
-  local saved_pollInterval = s.pollInterval
-  local saved_pollTimeout  = s.pollTimeout
-  s.pollInterval = M.required_pollInterval
-  s.pollTimeout  = M.required_pollTimeout
-  -- Re-arm so the new timing takes effect on the next chain.
-  s:stop()
-  s:start()
-
-  -- Re-resolve the trigger Space sids — :stop/:start might have shuffled
-  -- the active Space (it shouldn't, but be defensive).
-  local tsps_post = hs.spaces.spacesForScreen(trigger_screen) or {}
-  trigger_start_sid = hs.spaces.activeSpaceOnScreen(trigger_screen)
-  cur_idx = index_of(tsps_post, trigger_start_sid) or cur_idx
-  -- first_dest_sid / second_dest_sid by index — sids may have re-numbered
-  -- but indices remain stable across :stop/:start.
-  if tsps_post[first_dest_idx] then first_dest_sid = tsps_post[first_dest_idx] end
-  if tsps_post[second_dest_idx] then second_dest_sid = tsps_post[second_dest_idx] end
+  -- NOTE: M.required_pollInterval / M.required_pollTimeout are
+  -- snapshot'd + applied by the L6 dispatcher BEFORE probe runs
+  -- (see tests/L6/run.sh § apply_test_config). The dispatcher also
+  -- restores them after the test. We do NOT touch these knobs here.
 
   -- Frame center for cursor placement during disrupt.
   local f = trigger_screen:frame()
@@ -235,8 +219,6 @@ function M.probe()
     trigger_cx         = f.x + f.w / 2,
     trigger_cy         = f.y + f.h / 2,
     pre_verifier_ts    = (status.lastVerifierResult and status.lastVerifierResult.timestamp) or 0,
-    saved_pollInterval = saved_pollInterval,
-    saved_pollTimeout  = saved_pollTimeout,
   }
 
   return string.format(
@@ -293,19 +275,66 @@ function M.disrupt()
     return "L6 FAIL: chain not in flight at disrupt time (pollInterval too low? chain ended too fast?)"
   end
 
-  -- Validate that the keystroke's destination matches our plan. The
-  -- keystroke sends "next Space" — i.e. cur+1. For our test:
-  -- after arm, trigger should be at first_dest_idx. After keystroke,
-  -- trigger goes to first_dest_idx+1. plan.second_dest_idx was chosen
-  -- as the SECOND viable cand after current; that may NOT equal
-  -- first_dest+1 in pathological cases (e.g. cur_idx=2, picks={1,3}).
-  -- For this scenario to be deterministic we need second_dest_idx == first_dest_idx+1.
-  -- (Probe already picks them in order of "first cand ≠ cur" so this
-  -- holds when cur_idx > picks[1], but not otherwise.)
+  -- Validate that the keystroke's destination matches our plan.
   if plan.second_dest_idx ~= plan.first_dest_idx + 1 then
     return string.format(
       "L6 FAIL: keystroke can only move +1 idx, but plan wants %d -> %d (need +1)",
       plan.first_dest_idx, plan.second_dest_idx)
+  end
+
+  -- POLL until Mission Control is IDLE before firing the keystroke.
+  -- "Idle" = both the trigger and target have landed at their
+  -- first-pass destinations. While Mission Control is still
+  -- dispatching gotoSpaces, synthetic keystrokes can get coalesced
+  -- or dropped (flaky observation: same code, different outcome
+  -- across consecutive runs). Once both Spaces have landed, the
+  -- chain enters its poll-wait phase (pollInterval=3s before the
+  -- next poll), and Mission Control is idle — the keystroke now
+  -- lands reliably.
+  --
+  -- The chain stays in_progress (LOCK held by the chain's poll
+  -- timer + watchdog), so the GATE_RUNNING drop on the watcher's
+  -- fire for our keystroke still triggers as designed.
+  local trigger_screen = hs.screen.find(plan.trigger_uuid)
+  local target_screen  = hs.screen.find(plan.target_uuid)
+  if not trigger_screen or not target_screen then
+    return "L6 FAIL: trigger or target screen vanished"
+  end
+
+  -- The target's expected landing point is the index `first_dest_idx`
+  -- on the target display.
+  local target_spaces = hs.spaces.spacesForScreen(target_screen) or {}
+  local target_expected_sid = target_spaces[plan.first_dest_idx]
+  if not target_expected_sid then
+    return "L6 FAIL: target has no Space at first_dest_idx=" .. tostring(plan.first_dest_idx)
+  end
+
+  local waited = 0
+  while waited < 2.5 do
+    local trigger_at = hs.spaces.activeSpaceOnScreen(trigger_screen)
+    local target_at  = hs.spaces.activeSpaceOnScreen(target_screen)
+    if trigger_at == plan.first_dest_sid and target_at == target_expected_sid then
+      break
+    end
+    hs.timer.usleep(100000)  -- 100 ms
+    waited = waited + 0.1
+  end
+
+  local trigger_landed = hs.spaces.activeSpaceOnScreen(trigger_screen) == plan.first_dest_sid
+  local target_landed  = hs.spaces.activeSpaceOnScreen(target_screen)  == target_expected_sid
+  if not (trigger_landed and target_landed) then
+    return string.format(
+      "L6 FAIL: not both landed after %gs poll — trigger_landed=%s, target_landed=%s",
+      waited, tostring(trigger_landed), tostring(target_landed))
+  end
+
+  -- Re-check chain still in flight. With pollInterval=3.0 and only
+  -- ~1-1.5s elapsed since arm, this should always be true.
+  status = spoon.SpacesSync:status()
+  if not status.syncInProgress then
+    return string.format(
+      "L6 FAIL: chain ended during %gs-wait for landing (pollInterval too low?)",
+      waited)
   end
 
   -- Capture cursor for restore.
@@ -319,9 +348,6 @@ function M.disrupt()
   hs.timer.usleep(150000)  -- 150 ms
 
   -- Send ⌃-rightArrow via System Events. Key code 124 = right arrow.
-  -- hs.eventtap.keyStroke posts to the frontmost app, NOT to Mission
-  -- Control's system-hotkey handler — verified empirically that it
-  -- does NOT switch Spaces. AppleScript's System Events works.
   local applescript_ok, applescript_err = hs.osascript.applescript(
     [[tell application "System Events" to key code 124 using {control down}]])
 
@@ -335,9 +361,9 @@ function M.disrupt()
   end
 
   return string.format(
-    "L6 DISRUPT OK: ⌃-rightArrow sent via AppleScript with cursor at " ..
-    "(%.0f,%.0f) on trigger pos %d; chain in_progress=true at dispatch",
-    plan.trigger_cx, plan.trigger_cy, plan.trigger_pos)
+    "L6 DISRUPT OK: both trigger+target landed after %gs poll, then ⌃-rightArrow " ..
+    "sent via AppleScript at cursor=(%.0f,%.0f); chain still in_progress",
+    waited, plan.trigger_cx, plan.trigger_cy)
 end
 
 -- ---------------------------------------------------------------------------
@@ -362,19 +388,13 @@ function M.assert_()
   local trigger_screen = hs.screen.find(plan.trigger_uuid)
   local trigger_active_now = trigger_screen and hs.spaces.activeSpaceOnScreen(trigger_screen)
 
-  -- Restore pollInterval + pollTimeout BEFORE dispatching the
-  -- restore gotoSpace. The restore chain captures pollInterval at
-  -- chain-start time; if we restored AFTER dispatching, the restore
-  -- chain would run with the bumped 3 s pollInterval, taking 3-9 s
-  -- to settle and causing the next scenario's probe to SKIP for
-  -- "chain still in flight". Restoring first means the restore
-  -- chain uses fast (default) polling.
-  if type(plan.saved_pollInterval) == "number" then
-    s.pollInterval = plan.saved_pollInterval
-  end
-  if type(plan.saved_pollTimeout) == "number" then
-    s.pollTimeout = plan.saved_pollTimeout
-  end
+  -- NOTE: pollInterval / pollTimeout restoration is handled by the
+  -- L6 dispatcher (see tests/L6/run.sh § restore_test_config) AFTER
+  -- this phase returns. We do NOT touch them here. The dispatcher's
+  -- restore happens AFTER our trigger-restore gotoSpace below, which
+  -- means the restore chain will run with the bumped pollInterval.
+  -- That's fine — the next scenario's probe waits for syncInProgress=false
+  -- with a 5 s timeout, so the long restore chain is absorbed.
 
   -- Restore trigger to its original Space. Best-effort.
   local restore_ok = pcall(function()
