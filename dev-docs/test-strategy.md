@@ -28,8 +28,8 @@ under the layout described below. Current coverage:
 | L0    | green  | 4 guards (syntax, docs.json, version-sync, readme-links) |
 | L1    | green  | 45 unit tests across 6 helpers |
 | L3    | green  | 1 contract test (12-key `:status()` shape) |
-| L6    | green  | scenario-01-single-swipe + scenario-08-mid-chain-stop (2 of 30 manual checklist scenarios automated) |
-| L6h   | green  | scenario-05-mid-chain-reswipe (1 of 30; human-in-loop sub-tier for scenarios needing real input devices — see L6 Sub-Tiers) |
+| L6    | green  | scenario-01-single-swipe + scenario-05-mid-chain-reswipe + scenario-08-mid-chain-stop (3 of 30 manual checklist scenarios automated) |
+| L6h   | green  | infrastructure ready; no scenarios currently registered (scenario-05 promoted to L6 once AppleScript-via-System-Events keystroke path was verified to drive Mission Control) |
 
 Run `tests/run.sh` for the default safe set (L0 + L3),
 `tests/run.sh L3_inclusive` for the pre-commit equivalent (L0 + L1 +
@@ -42,7 +42,7 @@ of the loaded init.lua, with no source modifications). L1 is now
 "green" rather than "Not yet"; the activation trigger described in
 J1 below is no longer load-bearing.
 
-L6 has 2 of 30 manual-checklist scenarios automated; the rest of the
+L6 has 3 of 30 manual-checklist scenarios automated; the rest of the
 checklist remains the parent set, with automated coverage growing one
 scenario at a time.
 
@@ -139,14 +139,21 @@ manual "second" action (e.g. a trackpad swipe), then asserts on
 costs ~30 seconds of human attention and gives full programmatic
 assertions on the outcome.
 
-Scenarios currently in `tests/L6h/`:
-* `scenario-05-mid-chain-reswipe.lua` — user re-swipes the trigger
-  display while SpacesSync's chain is in flight. Verifier should flag
-  the trigger as `wrong-space` with `expectedIdx = first_dest`,
-  `actualIdx = second_dest` (the user's destination).
+Scenarios currently in `tests/L6h/`: none. (scenario-05 was originally
+prototyped here as human-in-loop, then promoted to fully-automated L6
+once we discovered that AppleScript-via-System-Events
+(`tell application "System Events" to key code 124 using {control
+down}`) drives Mission Control's space-switch hotkey where
+`hs.eventtap.keyStroke` does not. See `tests/L6/scenario-05-mid-chain-reswipe.lua`
+for the AppleScript-based version, and `dev-docs/hammerspoon-and-spaces-quirks.md`
+§ "Driving Mission Control hotkeys programmatically" for the input-path
+distinction.)
 
 Candidate scenarios for future L6h port (from manual-checklist):
 * Group B #6 — user swipes a target display mid-chain.
+  Status: may also be promotable to L6 if the AppleScript keystroke
+  trick works for a TARGET display (cursor placement on target,
+  fire ⌃-rightArrow during the chain's poll cycle for that target).
 * Group B #7 — user swipes an independent (non-sync-group) display mid-chain.
 * Group E #22 — accessibility revoked at `:start` (user toggles
   System Settings → Privacy & Security → Accessibility).

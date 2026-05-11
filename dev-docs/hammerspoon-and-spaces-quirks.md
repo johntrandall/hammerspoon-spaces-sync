@@ -43,11 +43,19 @@ If you call `gotoSpace()` for multiple monitors in a tight loop, macOS will sile
 > 1-second gap. The trigger Space does not move. This is consistent
 > with the general drop behavior above but worth noting separately:
 > simulating "user re-swipes mid-chain" (manual-checklist Group B #5)
-> via the AX path is therefore NOT reliably automatable — a real
-> trackpad swipe goes through a different input path that Mission
-> Control prioritizes. Diagnostic: `activeSpaceOnScreen` returns the
-> first-swipe sid both immediately after the dropped `gotoSpace` and
-> 8 s later. Conclusion: scenario #5 stays manual-checklist-only.
+> via the AX path is therefore NOT reliably automatable.
+>
+> **Workaround discovered 2026-05-11** *(Verified — same session)*:
+> use `hs.osascript.applescript([[tell application "System Events"
+> to key code 124 using {control down}]])` instead of a second
+> `gotoSpace`. AppleScript's System Events posts the keystroke at a
+> level Mission Control's hotkey handler observes, before the
+> in-flight-chain serialization that drops AX `gotoSpace`. See the
+> dedicated section below on "Driving Mission Control hotkeys
+> programmatically" for the full pattern. This makes L6
+> scenario-05 fully automatable (no human swipe needed); the L6h
+> "human-in-loop" sub-tier infrastructure is preserved for genuine
+> human-required scenarios.
 
 ```lua
 -- BAD: second call gets dropped
@@ -201,6 +209,50 @@ script that drives Hammerspoon via the CLI.
 
 For the testing implications of both quirks, see
 `dev-docs/test-strategy.md` § Operational Notes.
+
+## Driving Mission Control hotkeys programmatically *(Verified — observed when promoting L6h scenario-05 to L6, session a42bdc08 on 2026-05-11)*
+
+When you need to programmatically switch the active Space on a
+specific monitor (e.g. simulate a real user's ⌃-rightArrow), the
+input path matters:
+
+| Approach | Does it switch the Space? |
+|---|---|
+| `hs.spaces.gotoSpace(sid)` | Yes — but [silently dropped while a SpacesSync chain is in flight](#rapid-gotospace-calls-get-silently-dropped). |
+| `hs.eventtap.keyStroke({"ctrl"}, "right", 0)` | **NO.** Fires without error, but Mission Control does not respond. |
+| `hs.osascript.applescript([[tell application "System Events" to key code 124 using {control down}]])` | **YES.** Reliably moves the Space on the monitor under the cursor. |
+
+The reason `hs.eventtap.keyStroke` doesn't work for Mission Control:
+keyStroke posts to the frontmost application's input queue. Mission
+Control hotkeys are handled by the WindowServer at the system level
+*before* app routing — so a keystroke arriving via the frontmost-app
+path doesn't get observed by the hotkey handler.
+
+AppleScript's `System Events` posts at a higher level (the same level
+real input devices come in at), so the hotkey handler sees it.
+
+For a usable in-test pattern, see `tests/L6/scenario-05-mid-chain-reswipe.lua`:
+
+```lua
+-- 1. move cursor onto the target monitor (its frame center is enough)
+hs.mouse.absolutePosition({ x = trigger_cx, y = trigger_cy })
+hs.timer.usleep(150000)  -- 150 ms for the OS to register the position
+
+-- 2. fire ⌃-rightArrow via System Events (key code 124 = right)
+hs.osascript.applescript(
+  [[tell application "System Events" to key code 124 using {control down}]])
+
+-- 3. restore the cursor — cosmetic, the keystroke is already queued
+hs.mouse.absolutePosition(saved_mouse)
+```
+
+Key code 123 = left arrow (for the symmetric ⌃-leftArrow / "move
+left a Space" hotkey).
+
+This is what makes L6 scenario-05 (mid-chain re-swipe) automatable
+without a human at the trackpad — Mission Control treats the
+AppleScript event as a real user gesture and lets it through during
+SpacesSync's in-flight chain, where AX `gotoSpace` would be dropped.
 
 ## Hammerspoon API conventions
 
