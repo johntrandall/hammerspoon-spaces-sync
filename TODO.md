@@ -100,10 +100,13 @@ context.
 
 ### Hard-but-feasible L6 automation (revisit when needed, ~1 hour each)
 
-- [ ] **Scenario 16** — Forced timeout. Approach documented in field
-  report § "Scenario 16 — deferred": shell sleeps ~800ms after arm,
-  invokes `:stop()` to lock in first-chain lvr before the late
-  watcher fires, reads lvr in assert, `:start()` to restore.
+- [x] **Scenario 16** — Forced timeout (done 2026-05-11, commit
+  `772b6b4`). Implemented the `:stop()`-race-prevention approach from
+  the field report. `M.required_pollTimeout=0.01` +
+  `M.required_pollInterval=0.005` via the dispatcher; arm fires
+  gotoSpace, chain times out per-target, MID_SLEEP=1s, disrupt calls
+  `:stop()` to suppress the late-watcher second chain, assert verifies
+  target wrong-space mismatch.
 - [ ] **Scenario 20** — Display sleep + wake. `pmset displaysleepnow`,
   shell sleep 30s, observe activeSpaces still tracks correctly.
 - [ ] **Scenario 21** — `hs.reload()` mid-chain. Complex because the
