@@ -187,14 +187,75 @@ results to stdout.
 
 ### Open loops (handed off to future sessions)
 
-- **Scenarios 2/3 (3-display + 4-display sync groups)** — feasible
-  now via the test-owned-config pattern; just needs scenarios written.
 - **Scenarios 6/7 (target swipe / independent swipe mid-chain)** —
-  same AppleScript pattern, different verifier assertions.
-- **Scenario 16 (forced timeout via low `pollTimeout`)** — exercises
-  the verifier's deadline path which is otherwise unhittable.
-- **Generic config save/restore in the L6 dispatcher** — refactor
-  that pays back compounding interest as scenarios 2/3/6/7/16 land.
+  same AppleScript pattern as scenario-05, different verifier
+  assertions. Probably promotable to L6.
 - **L6h tier is currently empty** — infrastructure preserved for
   scenarios that genuinely require human input (Group E #22
   accessibility revoke remains a likely user).
+
+### Scenario 16 — deferred (forced-timeout coverage gap)
+
+**Status:** removed from `tests/L6/` after iterative-verification
+failures during this session's tail (commits afe7946, cac81ec
+land; scenario-16 prototype removed alongside the next commit).
+
+**Why it's hard to automate:**
+
+1. `pollTimeout=0.01` forces the chain to time out (per design).
+2. After timeout, the chain calls `chainEnd` → `verifyEndState` →
+   `lvr` is populated with the wrong-space mismatch.
+3. Mission Control eventually finishes the target's `gotoSpace`
+   (~500 ms-1 s later).
+4. The late landing fires the watcher, which (since
+   `syncInProgress=false` after the first chain's `chainEnd`)
+   starts a SECOND chain.
+5. Second chain dispatches trigger as target (since the second
+   chain's "trigger" is the original target). Trigger is already at
+   destination — `current == expected` → skip dispatch → straight
+   to `chainEnd` → verifier runs CLEAN.
+6. `lvr` is overwritten with the clean second-chain result. By the
+   time `assert_` reads it, the timed-out mismatch is gone.
+
+The capture window is on the order of 100 ms — too tight for
+`hs -c` IPC polling (which adds ~50-100 ms per round trip plus
+runloop-blocking `usleep`).
+
+**Tried and rejected:**
+
+* In-test `usleep` polling — blocks the runloop, prevents the very
+  chain we're waiting for from progressing.
+* `hs.timer.doEvery` callback inside `M.arm` — the timer fires
+  only 6 times (0.3 s) then stops without explanation. Likely the
+  Hammerspoon `hs -c` boundary semantics don't keep timer closures
+  alive across invocations as expected. Worth a separate
+  investigation if revisited.
+* `pollInterval=0.005` (5 ms) — caused a Hammerspoon IPC hang
+  (runaway timer cycle or watchdog interaction). Not safe to use.
+
+**Viable approach for a future attempt (not implemented):**
+
+After arm dispatches `gotoSpace`, shell-sleep ~800 ms, then have
+the test invoke `spoon.SpacesSync:stop()` to PREVENT the second
+chain from starting. This freezes `lvr` at the first-chain
+result. Then `:start()` to restore. Sequence:
+
+```
+arm:        hs.spaces.gotoSpace(dest_sid)
+shell:      sleep 0.8
+disrupt:    spoon.SpacesSync:stop()      -- locks in first lvr
+shell:      sleep 0.2
+assert:     read lastVerifierResult; should have target wrong-space
+cleanup:    spoon.SpacesSync:start()     -- restore
+```
+
+The 800 ms is a magic number; could be tuned by polling
+syncInProgress between two short shell sleeps. Worth ~30 minutes
+of focused work if/when forced-timeout coverage becomes important.
+
+**Coverage gap:** the verifier's per-target timeout path
+(`verifyEndState` flagging a wrong-space when chain's poll
+deadline elapses before target lands) is now exercised only by
+manual-checklist scenario #16. The chain's chainGeneration bail
+path (when `:stop()` interrupts a chain) IS exercised by L6
+scenario-08.
