@@ -9,3 +9,4 @@ dev-docs/project-index.md
 
 # Demo videos — live on the `multimedia-wip` branch on umbridge only
 assets/*.mp4
+tests/L6h/last-run.log

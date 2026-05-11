@@ -33,6 +33,45 @@
 local M = {}
 
 local PLAN_KEY = "_SpacesSyncL6h_Scenario05_Plan"
+-- Separate key for the saved sync-group config so cleanup() can run
+-- independently of plan lifecycle. Populated by probe; cleared by
+-- cleanup. Survives the assert_-time nil-out of PLAN_KEY.
+local CLEANUP_KEY = "_SpacesSyncL6h_Scenario05_Cleanup"
+
+-- The sync-group configuration this scenario REQUIRES. probe() saves
+-- the current obj.syncGroups, swaps in this value, and calls
+-- :stop():start() to re-arm. cleanup() restores the original. The
+-- test does not assume John's host already has this configured.
+M.required_sync_groups = { { 2, 3 } }
+
+-- pollTimeout AND pollInterval overrides during this scenario. Why
+-- both:
+--   * pollTimeout = MAX time the chain will wait for the target to
+--     land. NOT the chain duration — if the target lands in 100 ms,
+--     the chain ends in ~100 ms regardless of pollTimeout.
+--   * pollInterval = how often the chain polls activeSpaces during
+--     the wait. The chain only "notices" the target has landed at
+--     the next poll tick. So pollInterval is effectively the
+--     MINIMUM chain duration after dispatch.
+--
+-- Default pollInterval is ~0.25 s, so the chain ends ~0.25 s after
+-- the target's gotoSpace lands — a tight ~1 s window for the user
+-- to mid-chain-swipe before the chain has already finished.
+--
+-- Bumping pollInterval to 4.0 makes the chain take AT LEAST 4 s
+-- (one full poll cycle) regardless of how fast the target lands.
+-- That matches the user's 4-second action window. pollTimeout=8.0
+-- gives headroom for slow targets. Both restored in cleanup.
+M.required_pollTimeout  = 8.0
+M.required_pollInterval = 4.0
+
+-- Time-window mode (see tests/L6h/run.sh § PHASE 4). After arm the
+-- runner prints "GO!", sleeps this many seconds, and proceeds to
+-- settle + assert. NO second Enter prompt. Necessary because the
+-- user's swipe moves Spaces on the trigger display, and any terminal
+-- on that display would vanish along with the prior Space — making
+-- a follow-up Enter prompt invisible to the user.
+M.action_window_seconds = 4
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -58,6 +97,42 @@ local function index_of(spaces, sid)
   return nil
 end
 
+-- "1st", "2nd", "3rd", "4th", ...
+local function ordinal(n)
+  if n == 1 then return "1st"
+  elseif n == 2 then return "2nd"
+  elseif n == 3 then return "3rd"
+  else return tostring(n) .. "th" end
+end
+
+-- ASCII row of monitors with the trigger / target highlighted.
+-- e.g. for plan.total_screens=4 and trigger_pos=2, target_pos=3:
+--   [ #1 ] [*#2*] [ #3 ] [ #4 ]   (left-to-right, your physical layout)
+local function display_row(plan)
+  local boxes = {}
+  for i = 1, plan.total_screens do
+    if i == plan.trigger_pos then
+      table.insert(boxes, "[*#" .. i .. "*]")
+    else
+      table.insert(boxes, "[ #" .. i .. " ]")
+    end
+  end
+  return table.concat(boxes, " ")
+end
+
+-- One-line action summary, surfaced by the runner IMMEDIATELY BEFORE
+-- the "fire when ready" prompt. The user reads the full instructions
+-- once at scenario start; this one-liner is the in-the-moment cue.
+function M.user_action_summary()
+  local plan = _G[PLAN_KEY]
+  if not plan then return "(probe not run yet)" end
+  return string.format(
+    'Move CURSOR onto the TRIGGER monitor "%s" (%s from your left). ' ..
+    'Three-finger swipe RIGHT to send it from its %s Space to its %s Space.',
+    plan.trigger_name, ordinal(plan.trigger_pos),
+    ordinal(plan.first_dest_idx), ordinal(plan.second_dest_idx))
+end
+
 -- ---------------------------------------------------------------------------
 -- Phase: probe
 -- ---------------------------------------------------------------------------
@@ -80,6 +155,51 @@ function M.probe()
   if #screens < 2 then
     return "L6H SKIP: only " .. #screens .. " display(s) connected; L6h needs >= 2"
   end
+
+  -- Test-owned sync group configuration. Deep-copy the current
+  -- obj.syncGroups so cleanup() can restore it byte-for-byte even
+  -- if a future change makes the structure deeper.
+  local saved_syncGroups = {}
+  if type(s.syncGroups) == "table" then
+    for gi, g in ipairs(s.syncGroups) do
+      if type(g) == "table" then
+        saved_syncGroups[gi] = {}
+        for pi, p in ipairs(g) do
+          saved_syncGroups[gi][pi] = p
+        end
+      end
+    end
+  end
+
+  -- Swap in this scenario's required config (deep-copy from M to be
+  -- safe against future mutation), then re-arm via stop/start so the
+  -- watcher's baseline reflects the new groups. NB: this resets
+  -- chainGeneration and lastVerifierResult on the live Spoon.
+  local required = {}
+  for gi, g in ipairs(M.required_sync_groups) do
+    required[gi] = {}
+    for pi, p in ipairs(g) do required[gi][pi] = p end
+  end
+  s.syncGroups = required
+
+  -- Save + override timing knobs. See M.required_pollTimeout /
+  -- M.required_pollInterval comments at the top of this file.
+  local saved_pollTimeout  = s.pollTimeout
+  local saved_pollInterval = s.pollInterval
+  s.pollTimeout  = M.required_pollTimeout
+  s.pollInterval = M.required_pollInterval
+
+  s:stop()
+  s:start()
+  -- Stash the saved config for cleanup() — survives the assert_-time
+  -- nil-out of PLAN_KEY so cleanup is independent.
+  _G[CLEANUP_KEY] = {
+    syncGroups   = saved_syncGroups,
+    pollTimeout  = saved_pollTimeout,
+    pollInterval = saved_pollInterval,
+  }
+  -- Re-fetch status now that the new config is live.
+  status = s:status()
 
   local trigger_screen, trigger_pos
   local target_screen,  target_pos
@@ -143,7 +263,10 @@ function M.probe()
     trigger_uuid       = trigger_screen:getUUID(),
     target_uuid        = target_screen:getUUID(),
     trigger_pos        = trigger_pos,
+    trigger_name       = trigger_screen:name() or ("position " .. trigger_pos),
     target_pos         = target_pos,
+    target_name        = target_screen:name() or ("position " .. target_pos),
+    total_screens      = #screens,
     trigger_start_sid  = trigger_start_sid,
     cur_idx            = cur_idx,
     first_dest_sid     = first_dest_sid,
@@ -151,6 +274,7 @@ function M.probe()
     second_dest_sid    = second_dest_sid,
     second_dest_idx    = second_dest_idx,
     pre_verifier_ts    = (status.lastVerifierResult and status.lastVerifierResult.timestamp) or 0,
+    saved_syncGroups   = saved_syncGroups,
   }
 
   return string.format(
@@ -167,46 +291,84 @@ function M.instructions()
   if not plan then
     return "(probe not run yet)"
   end
+
+  -- Build the "independent monitors" list for the config blurb.
+  local indep = {}
+  for i = 1, plan.total_screens do
+    if i ~= plan.trigger_pos and i ~= plan.target_pos then
+      table.insert(indep, tostring(i))
+    end
+  end
+  local indep_str = #indep > 0 and table.concat(indep, " and ") or "(none)"
+
   return string.format([[
-This scenario tests that SpacesSync flags the trigger as drifted when
-you swipe the trigger display a SECOND time while the sync chain is
+This scenario tests that SpacesSync flags the TRIGGER monitor as
+drifted when you swipe IT a second time while the sync chain is
 still in flight.
 
-SETUP CHECK
-  * Trigger display: position %d
-  * Trigger currently at: Space index %d
-  * Target display:  position %d
+CONFIGURATION (set by the test; restored on cleanup)
+  * obj.syncGroups = {{%d, %d}}
+       — only the %s and %s monitors sync with each other
+       — the %s monitor(s) (%s from left) are INDEPENDENT
+
+YOUR MONITORS (left to right)
+    %s
+              ^^^^^
+              this is the TRIGGER monitor
+
+  * TRIGGER: "%s"   (the %s monitor from your left)
+       ← you'll swipe THIS monitor mid-chain
+  * TARGET:  "%s"   (the %s monitor from your left)
+       ← the chain will pull this along to follow the trigger
+
+  Your terminal was moved to a NON-sync-group monitor at startup;
+  it should stay visible throughout the test.
+
+PREPARATION (do THIS BEFORE pressing Enter at the next prompt)
+  * Move your cursor onto the TRIGGER monitor ("%s" — the %s
+    from your left) and keep it there.
+  * This is REQUIRED. Three-finger trackpad swipes only affect
+    the monitor under the cursor. You won't have time to move
+    the cursor after the chain starts.
+  * Your fingers should be on the trackpad, ready to swipe right.
 
 THE PROCEDURE
-  1. When I print ">>> NOW PERFORM THE MANUAL ACTION <<<" below,
-     the trigger display will have just been programmatically
-     swiped to Space index %d.
+  1. Press Enter at the next prompt. The test programmatically
+     moves the TRIGGER monitor ("%s") to its %s Space. You do
+     nothing for this step — just watch that monitor change.
 
-  2. WITHIN ~1 SECOND of seeing it land, swipe the SAME trigger
-     display (position %d) ONE Space to the right — to Space
-     index %d. Use the trackpad three-finger gesture (or
-     ⌃-rightArrow on that display).
+  2. As soon as the TRIGGER monitor lands on its %s Space, do
+     a three-finger trackpad swipe RIGHT. (Cursor is already on
+     the TRIGGER monitor from preparation.) This sends it from
+     its %s Space to its %s Space.
 
-  3. The target display (position %d) is going to try to follow
-     you to idx %d via the chain. That's fine — when YOU swipe
-     the trigger to idx %d, the chain is still polling for the
-     idx %d target landing. The watcher's second event is GATE_RUNNING-
-     dropped (no second chain), and at chain end the verifier should
-     flag the trigger as drifted.
-
-  4. After your swipe, press Enter.
+  3. After your swipe, do nothing. The runner sleeps the action
+     window, then ~%ds for the chain to settle, then asserts.
+     NO ENTER NEEDED after your swipe.
 
 EXPECTED OUTCOME (asserted programmatically)
-  * lastVerifierResult.mismatches has one entry for the trigger
-    uuid with kind="wrong-space", expectedIdx=%d, actualIdx=%d.
-  * No second chain ran (only one gen bump, not two).
+  * The verifier flags the TRIGGER monitor as drifted:
+      expected: its %s Space (where the chain dispatched it)
+      actual:   its %s Space (where you swiped to)
+  * Only ONE chain ran — your re-swipe should be GATE_RUNNING-
+    dropped, not start a second chain.
 ]],
-    plan.trigger_pos, plan.cur_idx, plan.target_pos,
-    plan.first_dest_idx,
-    plan.trigger_pos, plan.second_dest_idx,
-    plan.target_pos, plan.first_dest_idx,
-    plan.second_dest_idx, plan.first_dest_idx,
-    plan.first_dest_idx, plan.second_dest_idx)
+    plan.trigger_pos, plan.target_pos,                            -- 1,2 config {{N,N}}
+    plan.trigger_name, plan.target_name,                          -- 3,4 config "X and Y monitors"
+    (#indep > 0 and "remaining" or "(no)"),                       -- 5   config word
+    indep_str,                                                    -- 6   config "1 and 4 from left"
+    display_row(plan),                                            -- 7   layout row
+    plan.trigger_name, ordinal(plan.trigger_pos),                 -- 8,9 layout trigger line
+    plan.target_name, ordinal(plan.target_pos),                   -- 10,11 layout target line
+    plan.trigger_name, ordinal(plan.trigger_pos),                 -- 12,13 PREPARATION
+    plan.trigger_name, ordinal(plan.first_dest_idx),              -- 14,15 step 1
+    ordinal(plan.first_dest_idx),                                 -- 16    step 2 "lands on its X Space"
+    ordinal(plan.first_dest_idx), ordinal(plan.second_dest_idx),  -- 17,18 step 2 "from X to Y"
+    -- approximate settle = 3 * pollTimeout + 2 (capped at 8); we
+    -- can't know the exact value without re-reading status, but
+    -- for required_pollTimeout=8 it's 26s.
+    math.floor(3 * (M.required_pollTimeout or 2) + 2),            -- 19   step 3 settle seconds
+    ordinal(plan.first_dest_idx), ordinal(plan.second_dest_idx))  -- 20,21 expected outcome
 end
 
 -- ---------------------------------------------------------------------------
@@ -311,6 +473,48 @@ function M.assert_()
     "L6H PASS: scenario 5 — verifier flagged trigger drift " ..
     "(expectedIdx=%d, actualIdx=%d) [restore: %s]",
     found.expectedIdx, found.actualIdx, tostring(restore_ok))
+end
+
+-- ---------------------------------------------------------------------------
+-- Phase: cleanup — restore original syncGroups
+-- ---------------------------------------------------------------------------
+--
+-- The runner invokes this AFTER every scenario that returned PROBE
+-- READY, regardless of subsequent phase outcomes. The plan was
+-- cleared in assert_, so we re-read the saved config from a runner-
+-- side cache. Belt-and-suspenders: also accept a stash on _G that
+-- assert_ may leave behind if it ran. For simplicity in this test
+-- we keep the plan alive in a second key for cleanup only.
+
+function M.cleanup()
+  local saved = _G[CLEANUP_KEY]
+  if not saved then
+    return "L6H CLEANUP SKIP: no saved config (probe didn't run, or already restored)"
+  end
+  if not spoon or not spoon.SpacesSync then
+    return "L6H CLEANUP FAIL: spoon.SpacesSync vanished"
+  end
+  local s = spoon.SpacesSync
+  -- Deep-copy on restore — the runner might call cleanup more than
+  -- once across separate hs -c invocations.
+  local restored = {}
+  for gi, g in ipairs(saved.syncGroups or {}) do
+    if type(g) == "table" then
+      restored[gi] = {}
+      for pi, p in ipairs(g) do restored[gi][pi] = p end
+    end
+  end
+  s.syncGroups = restored
+  if type(saved.pollTimeout) == "number" then
+    s.pollTimeout = saved.pollTimeout
+  end
+  if type(saved.pollInterval) == "number" then
+    s.pollInterval = saved.pollInterval
+  end
+  s:stop()
+  s:start()
+  _G[CLEANUP_KEY] = nil
+  return "L6H CLEANUP OK: restored syncGroups + pollTimeout + pollInterval"
 end
 
 return M

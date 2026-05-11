@@ -85,6 +85,99 @@ SETTLE_BETWEEN_TESTS=3
 
 echo "L6h setup: pollTimeout=$POLL_TIMEOUT, SETTLE_AFTER_USER=${SETTLE_AFTER_USER}s, SETTLE_BETWEEN_TESTS=${SETTLE_BETWEEN_TESTS}s"
 
+# Durable result log — survives pane close. Cleared at start of each
+# run; written to alongside stdout so the calling agent (or future-
+# you) can read the result without racing the pane lifecycle.
+RESULT_LOG="$REPO_ROOT/tests/L6h/last-run.log"
+{
+  echo "L6h run starting: $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "pollTimeout=$POLL_TIMEOUT SETTLE_AFTER_USER=${SETTLE_AFTER_USER}s"
+  echo "---"
+} > "$RESULT_LOG"
+echo "  log: $RESULT_LOG"
+
+log_result() {
+  echo "$@" >> "$RESULT_LOG"
+}
+
+# -----------------------------------------------------------------------------
+# Window placement — auto-move iTerm window to an independent display.
+# -----------------------------------------------------------------------------
+#
+# Why: L6h scenarios swipe Spaces on sync-group displays. A terminal
+# hosted on one of those displays will vanish along with the prior
+# Space when the swipe lands, hiding subsequent prompts. We move
+# iTerm's focused window to a display outside the sync group before
+# any prompts are shown, so the rest of the flow stays visible.
+#
+# How: hs.application.find('iTerm2'):focusedWindow() returns the
+# frontmost iTerm window — the one the user just typed `tests/run.sh
+# L6h` in. We resolve which position it's currently on, check it
+# against the live syncGroups via spoon.SpacesSync:status(), and
+# move it to the first independent position if needed.
+move_result=$(hs -q -c '
+local app = hs.application.find("iTerm2")
+if not app then return "L6H WINDOW SKIP: iTerm2 not running" end
+local win = app:focusedWindow() or app:mainWindow()
+if not win then return "L6H WINDOW SKIP: no iTerm window" end
+
+local cur_screen = win:screen()
+if not cur_screen then return "L6H WINDOW SKIP: window has no screen" end
+
+if not spoon or not spoon.SpacesSync then return "L6H WINDOW SKIP: spoon.SpacesSync not loaded" end
+local status = spoon.SpacesSync:status()
+local syncGroups = status.syncGroups or {}
+
+local screens = hs.screen.allScreens()
+table.sort(screens, function(a,b)
+  local fa, fb = a:frame(), b:frame()
+  if fa.x ~= fb.x then return fa.x < fb.x end
+  return fa.y < fb.y
+end)
+
+local cur_pos
+for i, scr in ipairs(screens) do
+  if scr == cur_screen then cur_pos = i; break end
+end
+if not cur_pos then return "L6H WINDOW SKIP: cannot resolve iTerm window position" end
+
+local function in_any_group(pos)
+  for _, g in ipairs(syncGroups) do
+    if type(g) == "table" then
+      for _, p in ipairs(g) do
+        if p == pos then return true end
+      end
+    end
+  end
+  return false
+end
+
+if not in_any_group(cur_pos) then
+  return "L6H WINDOW OK: iTerm already on independent pos " .. cur_pos
+end
+
+local target_pos
+for i = 1, #screens do
+  if not in_any_group(i) then target_pos = i; break end
+end
+if not target_pos then return "L6H WINDOW FAIL: no independent display available" end
+
+win:moveToScreen(screens[target_pos], false, true)
+return "L6H WINDOW MOVED: from pos " .. cur_pos .. " to pos " .. target_pos
+' 2>&1 | tail -1)
+
+case "$move_result" in
+  "L6H WINDOW OK"*|"L6H WINDOW MOVED"*)
+    printf "  %s%s%s\n" "$DIM" "$move_result" "$RESET"
+    ;;
+  "L6H WINDOW SKIP"*|"L6H WINDOW FAIL"*)
+    printf "  %s%s — you'll need to move your terminal manually.%s\n" "$YELLOW" "$move_result" "$RESET"
+    ;;
+  *)
+    printf "  %sWindow-move probe produced unexpected output: %s%s\n" "$YELLOW" "$move_result" "$RESET"
+    ;;
+esac
+
 # --- Helpers -----------------------------------------------------------------
 
 run_phase() {
@@ -115,6 +208,24 @@ prompt_enter() {
   fi
 }
 
+# Run M.cleanup() for a test file. Used both inline at end-of-scenario
+# (success path) and from the early-exit short-circuits below. Safe
+# to call more than once per scenario — cleanup is idempotent (it
+# clears its own _G cache after first run).
+run_cleanup_for_test() {
+  local tf="$1"
+  local cleanup_out=$(hs -q -c "local M = dofile('$tf'); if M.cleanup then return M.cleanup() else return 'L6H CLEANUP SKIP: no cleanup defined' end" 2>&1 | tail -1)
+  log_result "  cleanup: $cleanup_out"
+  case "$cleanup_out" in
+    "L6H CLEANUP OK"*|"L6H CLEANUP SKIP"*)
+      printf "  %scleanup: %s%s\n" "$DIM" "$cleanup_out" "$RESET"
+      ;;
+    *)
+      printf "  %scleanup: %s%s\n" "$YELLOW" "$cleanup_out" "$RESET"
+      ;;
+  esac
+}
+
 # --- Test loop ---------------------------------------------------------------
 
 shopt -s nullglob
@@ -135,9 +246,12 @@ for tf in "${TESTS[@]}"; do
   FIRST_TEST=0
 
   printf "\n%s── %s%s\n" "$BOLD" "$name" "$RESET"
+  log_result ""
+  log_result "── $name"
 
   # PHASE 1: probe
   probe_out=$(run_phase "$tf" "probe")
+  log_result "  probe: $probe_out"
   case "$probe_out" in
     "L6H PROBE READY"*)
       echo "  probe: $probe_out"
@@ -153,18 +267,53 @@ for tf in "${TESTS[@]}"; do
       ;;
   esac
 
-  # PHASE 2: print instructions, wait for "ready"
-  printf "\n%s  INSTRUCTIONS%s\n" "$BOLD" "$RESET"
+  # Re-read pollTimeout AFTER probe — probe may have bumped it (e.g.
+  # scenario-05 sets pollTimeout=8.0 to give the user a comfortable
+  # swipe window). Recompute SETTLE_AFTER_USER per-scenario so the
+  # chain actually has time to complete before assert runs.
+  scenario_poll=$(hs -q -c 'return tostring(spoon.SpacesSync.pollTimeout or 2.0)' 2>/dev/null | tail -1)
+  if [[ ! "$scenario_poll" =~ ^[0-9.]+$ ]]; then scenario_poll=2.0; fi
+  scenario_settle=$(awk -v pt="$scenario_poll" 'BEGIN { v = 3 * pt + 2; if (v < 8) v = 8; printf "%g\n", v }')
+  printf "  %s(scenario pollTimeout=%s, settle=%ss)%s\n" "$DIM" "$scenario_poll" "$scenario_settle" "$RESET"
+  log_result "  scenario_poll=$scenario_poll scenario_settle=${scenario_settle}s"
+
+  # PHASE 2a: print full instructions. (Window placement was already
+  # handled by the move_result step at the top of this run.)
+  printf "\n%s  INSTRUCTIONS (read fully — these are the rules)%s\n" "$BOLD" "$RESET"
   get_instructions "$tf" | sed 's/^/    /'
   printf "\n"
-  if ! prompt_enter "  Press Enter when you're at your trackpad/keyboard and ready to begin (or wait 120s) > " 120; then
-    printf "  %sL6H FAIL: user did not respond%s\n" "$YELLOW" "$RESET"
+
+  # PHASE 2c: action summary — what the user will need to do, displayed
+  # IMMEDIATELY BEFORE arm fires. Read from M.user_action_summary() if
+  # the test exposes it; otherwise a generic message.
+  action_summary=$(hs -q -c "local M = dofile('$tf'); if M.user_action_summary then return M.user_action_summary() else return '' end" 2>&1 | tail -1)
+  action_window=$(hs -q -c "local M = dofile('$tf'); return tonumber(M.action_window_seconds) or 0" 2>/dev/null | tail -1)
+  if [[ ! "$action_window" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then action_window=0; fi
+
+  printf "\n%s  ──── YOUR ACTION ────%s\n" "$BOLD" "$RESET"
+  if [[ -n "$action_summary" ]]; then
+    printf "%s    %s%s\n" "$CYAN" "$action_summary" "$RESET"
+  else
+    printf "%s    (see instructions above)%s\n" "$DIM" "$RESET"
+  fi
+  if (( $(awk -v v="$action_window" 'BEGIN { print (v > 0) }') )); then
+    printf "%s    Window: %ss after the auto-trigger fires. NO Enter after your action.%s\n" "$CYAN" "$action_window" "$RESET"
+  else
+    printf "%s    After your action, press Enter to continue.%s\n" "$CYAN" "$RESET"
+  fi
+  printf "\n"
+
+  # PHASE 2d: final "fire when ready" gate
+  if ! prompt_enter "  Press Enter to fire the auto-trigger (or wait 600s) > " 600; then
+    printf "  %sL6H FAIL: user did not fire%s\n" "$YELLOW" "$RESET"
     ANY_FAIL=1
+    run_cleanup_for_test "$tf"
     continue
   fi
 
   # PHASE 3: arm — automated dispatch (may be no-op)
   arm_out=$(run_phase "$tf" "arm")
+  log_result "  arm: $arm_out"
   case "$arm_out" in
     "L6H ARM OK"*)
       echo "  arm: $arm_out"
@@ -172,24 +321,86 @@ for tf in "${TESTS[@]}"; do
     *)
       printf "  %sarm FAIL:%s %s\n" "$YELLOW" "$RESET" "$arm_out"
       ANY_FAIL=1
+      run_cleanup_for_test "$tf"
       continue
       ;;
   esac
 
-  # PHASE 4: prompt user to perform their action
-  printf "\n  %s>>> NOW PERFORM THE MANUAL ACTION <<<%s\n" "$GREEN" "$RESET"
-  if ! prompt_enter "  Press Enter once you've completed it (or wait 60s) > " 60; then
-    printf "  %sL6H FAIL: user did not signal completion%s\n" "$YELLOW" "$RESET"
-    ANY_FAIL=1
-    continue
+  # PHASE 3.5: wait for the chain to ACTUALLY enter flight before
+  # opening the user's action window. Without this, GO! prints
+  # immediately after arm, but the auto-swipe gesture is still mid-
+  # animation and the watcher hasn't fired yet. A user who reacts to
+  # GO! quickly may swipe BEFORE the chain starts, in which case the
+  # watcher's first fire sees the user's swipe (not the auto one),
+  # expectedEndState[trigger] points to the user's destination, and
+  # the verifier finds 0 mismatches.
+  #
+  # We poll status.syncInProgress every 100 ms (via the lightweight
+  # `hs -c` round-trip) for up to 2 s. If we never see
+  # syncInProgress=true, the auto-swipe may have been dropped — log
+  # and continue anyway (assert_ will catch it).
+  inflight=0
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    sp=$(hs -q -c 'return tostring(spoon and spoon.SpacesSync and spoon.SpacesSync:status().syncInProgress)' 2>/dev/null | tail -1)
+    if [[ "$sp" == "true" ]]; then
+      inflight=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ $inflight -eq 1 ]]; then
+    printf "  %s(chain in flight; opening action window)%s\n" "$DIM" "$RESET"
+    log_result "  chain_in_flight: yes"
+  else
+    printf "  %s(WARNING: chain did NOT enter flight within 2 s — auto-swipe may have been dropped)%s\n" "$YELLOW" "$RESET"
+    log_result "  chain_in_flight: no (warning)"
   fi
 
-  # PHASE 5: settle so the chain finishes any pending polls + verifier
-  printf "  %ssettle: %ss (waiting for chain to settle)%s\n" "$DIM" "$SETTLE_AFTER_USER" "$RESET"
-  sleep "$SETTLE_AFTER_USER"
+  # PHASE 4: prompt user OR sleep a fixed action window.
+  #
+  # Two completion-signal modes per scenario:
+  #
+  #   * action_window_seconds (read once per test) — if a positive
+  #     number, runner prints "GO! N seconds" and shell-sleeps N
+  #     seconds. NO second Enter prompt. Right for scenarios where the
+  #     user's action briefly hides the terminal (e.g. swipe-the-
+  #     trigger-display moves Spaces on that display).
+  #   * Otherwise — runner waits for Enter (default). Right for
+  #     scenarios where the user toggles a system pref / clicks a
+  #     dialog and the terminal stays visible throughout.
+  #
+  # The mode is read once via `hs -c` after arm.
+  action_window=$(hs -q -c "local M = dofile('$tf'); return tonumber(M.action_window_seconds) or 0" 2>/dev/null | tail -1)
+  if [[ "$action_window" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(awk -v v="$action_window" 'BEGIN { print (v > 0) }') )); then
+    # Terminal bell + bold green banner. The bell helps when the
+    # user is staring at the trigger monitor (not the terminal) —
+    # they hear the GO cue.
+    printf '\a'
+    printf "\n"
+    printf "  %s╔═══════════════════════════════════════════════╗%s\n" "$GREEN" "$RESET"
+    printf "  %s║  >>> GO! SWIPE NOW — %ss window OPEN <<<       ║%s\n" "$GREEN" "$action_window" "$RESET"
+    printf "  %s╚═══════════════════════════════════════════════╝%s\n" "$GREEN" "$RESET"
+    sleep "$action_window"
+    printf "  %s(action window closed)%s\n" "$DIM" "$RESET"
+  else
+    printf "\n  %s>>> NOW PERFORM THE MANUAL ACTION <<<%s\n" "$GREEN" "$RESET"
+    if ! prompt_enter "  Press Enter once you've completed it (or wait 60s) > " 60; then
+      printf "  %sL6H FAIL: user did not signal completion%s\n" "$YELLOW" "$RESET"
+      ANY_FAIL=1
+      run_cleanup_for_test "$tf"
+      continue
+    fi
+  fi
+
+  # PHASE 5: settle so the chain finishes any pending polls + verifier.
+  # Uses the scenario-specific settle (sized from THIS scenario's
+  # pollTimeout, which may have been bumped by probe).
+  printf "  %ssettle: %ss (waiting for chain to settle)%s\n" "$DIM" "$scenario_settle" "$RESET"
+  sleep "$scenario_settle"
 
   # PHASE 6: assert
   assert_out=$(run_phase "$tf" "assert_")
+  log_result "  assert: $assert_out"
   case "$assert_out" in
     "L6H PASS"*)
       printf "  %sassert: %s%s\n" "$GREEN" "$assert_out" "$RESET"
@@ -199,12 +410,24 @@ for tf in "${TESTS[@]}"; do
       ANY_FAIL=1
       ;;
   esac
+
+  # PHASE 7: cleanup — ALWAYS run if probe was READY. Restores
+  # test-owned config (e.g. obj.syncGroups). Skipped silently if the
+  # test doesn't define M.cleanup. A cleanup failure is logged but
+  # does not flip ANY_FAIL — the test result already captured the
+  # behavior under test; cleanup failure is housekeeping only.
+  run_cleanup_for_test "$tf"
 done
 
 echo
+log_result ""
 if [[ $ANY_FAIL -ne 0 ]]; then
   echo "L6h FAIL"
+  log_result "L6h FAIL"
+  log_result "EXIT=1 at $(date '+%Y-%m-%d %H:%M:%S')"
   exit 1
 fi
 echo "L6h OK"
+log_result "L6h OK"
+log_result "EXIT=0 at $(date '+%Y-%m-%d %H:%M:%S')"
 exit 0
