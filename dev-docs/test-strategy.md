@@ -28,7 +28,7 @@ under the layout described below. Current coverage:
 | L0    | green  | 4 guards (syntax, docs.json, version-sync, readme-links) |
 | L1    | green  | 45 unit tests across 6 helpers |
 | L3    | green  | 1 contract test (12-key `:status()` shape) |
-| L6    | green  | scenario-01-single-swipe + scenario-05-mid-chain-reswipe + scenario-08-mid-chain-stop (3 of 30 manual checklist scenarios automated) |
+| L6    | green  | scenario-01 + scenario-02 + scenario-03 + scenario-05 + scenario-08 (5 of 30 manual checklist scenarios automated) |
 | L6h   | green  | infrastructure ready; no scenarios currently registered (scenario-05 promoted to L6 once AppleScript-via-System-Events keystroke path was verified to drive Mission Control) |
 
 Run `tests/run.sh` for the default safe set (L0 + L3),
@@ -42,7 +42,7 @@ of the loaded init.lua, with no source modifications). L1 is now
 "green" rather than "Not yet"; the activation trigger described in
 J1 below is no longer load-bearing.
 
-L6 has 3 of 30 manual-checklist scenarios automated; the rest of the
+L6 has 5 of 30 manual-checklist scenarios automated; the rest of the
 checklist remains the parent set, with automated coverage growing one
 scenario at a time.
 
