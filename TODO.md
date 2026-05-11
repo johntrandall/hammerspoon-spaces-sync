@@ -76,28 +76,27 @@ context.
 
 ### High-priority L6 automation (patterns proven, ~1-2 hours)
 
-- [ ] **Scenario 06** — User swipes a TARGET display mid-chain. Same
-  AppleScript ⌃-rightArrow pattern as scenario-05 (commit 8c0f749),
-  but cursor placement on the target monitor instead of trigger.
-  Asserts wrong-space mismatch on the TARGET uuid.
-- [ ] **Scenario 07** — User swipes an INDEPENDENT (non-sync-group)
-  display mid-chain. Same AppleScript pattern, cursor on
-  independent display. Verifies the watcher routes the change to
-  the INDEPENDENT branch (popup, no chain) AND that the existing
-  chain's verifier flags the independent display in
-  `expectedEndState` as drifted.
-- [ ] **Scenario 09** — Mid-chain toggle hotkey (`⌃⌥⌘Y`). Trivial:
-  call `spoon.SpacesSync:toggle()` via `hs -c` in the disrupt phase.
-  Same code path as scenario-08 but exercises the bind-hotkeys
-  surface.
-- [ ] **Scenario 10** — Rapid double-toggle. Call `:toggle()` twice
-  in rapid succession via `hs -c`. Verifies no leaked timers, clean
-  off-then-on state.
-- [ ] **Scenario 24** — Misconfigured `syncGroups` (out-of-range
-  position). Set `syncGroups = {{1, 5}}` on a 4-display setup via
-  `M.required_syncGroups`. Verify the WARN log at start ("position
-  5 / not connected") and that the chain logs `position 5 > 4` on
-  any subsequent fire. Easy assertion via console log scrape.
+- [x] **Scenario 06** — User swipes a TARGET display mid-chain. Landed
+  in commit 7ad93f8. AppleScript ⌃-rightArrow at TARGET cursor.
+  Verifier flags target drift (expectedIdx=2, actualIdx=3).
+- [x] **Scenario 07** — User swipes an INDEPENDENT display mid-chain.
+  Landed in commit 7ad93f8. Proves verifier coverage extends to
+  non-sync-group displays via `captureExpectedEndState()`'s
+  connected-displays snapshot.
+- [x] **Scenario 09** — Mid-chain toggle hotkey. Landed in commit
+  7b3e8b3. Uses disrupt-phase to call `:toggle()` mid-chain; verifies
+  chain halts cleanly + re-toggle restores sync.
+- [x] **Scenario 10** — Rapid double-toggle. Landed in commit 7b3e8b3.
+  Verifies BOTH halves of the chainGeneration contract — `:stop()`
+  bumps gen by +1 (init.lua:1747), `:start()` resets gen to 0
+  (init.lua:1709). Mid-arm gen capture required because final state
+  alone is indistinguishable from "never advanced".
+- [x] **Scenario 24** — Misconfigured `syncGroups` (out-of-range
+  position). Landed in commit bdb1c4f. Uses `M.required_syncGroups
+  = {{1, 5}}`. Console-tail check runs in `assert_()` rather than
+  `probe()` because `hs.logger` writes through `hs.console`
+  asynchronously — by `assert_()` the >=8s SLEEP_BETWEEN has given
+  the logger plenty of time to flush.
 
 ### Hard-but-feasible L6 automation (revisit when needed, ~1 hour each)
 
@@ -131,14 +130,14 @@ pre-release manual checklist sample:
 
 ### Known flakiness to address
 
-- [ ] **Scenario 02 intermittent failure** — target on pos 2 ends
+- [x] **Scenario 02 intermittent failure** — target on pos 2 ends
   at idx 2 instead of following to idx 1. Observed once in the
   L6_inclusive subagent run on 2026-05-11; not reproducible after
   a clean state reset. Hypothesis: a stale chain from a prior
   partial run was interleaving. The L6 dispatcher's EXIT-trap
-  snapshot/restore (added late in the session) should reduce this,
-  but worth running 5+ consecutive L6 cycles to confirm
-  deterministic behavior.
+  snapshot/restore mitigates this. **Confirmed 2026-05-11:** 5
+  consecutive L6 runs (with the EXIT-trap reset in place) all
+  passed scenario-02 cleanly. Closed.
 
 ## Release v0.3 — pre-publish checklist
 
