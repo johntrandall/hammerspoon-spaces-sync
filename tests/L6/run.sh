@@ -93,6 +93,84 @@ SETTLE_BETWEEN_TESTS=3
 
 echo "L6 setup: pollTimeout=$POLL_TIMEOUT, SLEEP_BETWEEN=${SLEEP_BETWEEN}s (max(8, 3*pollTimeout+2)), MID_SLEEP=${MID_SLEEP}s, SETTLE_BETWEEN_TESTS=${SETTLE_BETWEEN_TESTS}s"
 
+# -----------------------------------------------------------------------------
+# Run-scoped state snapshot + EXIT-trap restore
+# -----------------------------------------------------------------------------
+#
+# Each test's `apply_test_config` / `restore_test_config` is a per-test
+# guarantee. But if a test crashes BEFORE its restore runs (e.g. the
+# user Ctrl-Cs L6, or hs.ipc hangs mid-test), the user's live
+# obj.syncGroups / pollTimeout / pollInterval can be left at the
+# test's bumped values. The next L6 run then snapshots the polluted
+# values as "saved" and never recovers.
+#
+# This wrapper snapshots the user's live config at L6 startup, stashes
+# it in _G for safekeeping, and registers a bash EXIT trap that
+# restores it. The trap runs on:
+#   * Normal completion (after the test loop)
+#   * Test FAIL (non-zero exit)
+#   * Ctrl-C / SIGINT
+#   * Any other shell exit
+#
+# The snapshot key is unique per L6 run to avoid colliding with a
+# prior interrupted run's snapshot (which might itself be polluted).
+
+L6_SNAPSHOT_KEY="_SpacesSyncL6_RunSnapshot_$$"  # $$ = pid, unique per run
+echo "  L6 run-scope: snapshotting live config to $L6_SNAPSHOT_KEY"
+snapshot_out=$(hs -q -c "
+  local s = spoon.SpacesSync
+  if not s then return 'L6 SNAPSHOT FAIL: spoon.SpacesSync not loaded' end
+  local function deep_copy(v)
+    if type(v) ~= 'table' then return v end
+    local out = {}
+    for k, vv in pairs(v) do out[k] = deep_copy(vv) end
+    return out
+  end
+  _G['$L6_SNAPSHOT_KEY'] = {
+    syncGroups   = deep_copy(s.syncGroups),
+    pollTimeout  = s.pollTimeout,
+    pollInterval = s.pollInterval,
+  }
+  return 'L6 SNAPSHOT OK: syncGroups=' .. tostring(hs.inspect and hs.inspect(s.syncGroups) or 'table') ..
+         ', pollTimeout=' .. tostring(s.pollTimeout) ..
+         ', pollInterval=' .. tostring(s.pollInterval)
+" 2>&1 | tail -1)
+echo "  $snapshot_out"
+
+# Restore function — called by EXIT trap, also runs after normal
+# completion. Resets to the snapshotted values and re-arms via
+# :stop():start(). Idempotent (clears _G key after running).
+l6_restore_snapshot() {
+  local restore_out=$(hs -q -c "
+    local snap = _G['$L6_SNAPSHOT_KEY']
+    if not snap then return 'L6 SNAPSHOT-RESTORE SKIP: no snapshot' end
+    local s = spoon.SpacesSync
+    if not s then return 'L6 SNAPSHOT-RESTORE FAIL: spoon.SpacesSync vanished' end
+    local function deep_copy(v)
+      if type(v) ~= 'table' then return v end
+      local out = {}
+      for k, vv in pairs(v) do out[k] = deep_copy(vv) end
+      return out
+    end
+    s.syncGroups   = deep_copy(snap.syncGroups)
+    s.pollTimeout  = snap.pollTimeout
+    s.pollInterval = snap.pollInterval
+    _G['$L6_SNAPSHOT_KEY'] = nil
+    s:stop()
+    s:start()
+    return 'L6 SNAPSHOT-RESTORE OK: syncGroups=' .. tostring(hs.inspect and hs.inspect(s.syncGroups) or 'table') ..
+           ', pollTimeout=' .. tostring(s.pollTimeout) ..
+           ', pollInterval=' .. tostring(s.pollInterval)
+  " 2>&1 | tail -1)
+  echo "  $restore_out"
+}
+
+# Register the EXIT trap. This fires on:
+#   * Script's natural end (exit 0 / exit 1 below)
+#   * Ctrl-C / SIGINT propagating up
+#   * Any explicit `exit` call
+trap 'l6_restore_snapshot' EXIT
+
 # Helper: invoke one phase via `hs -c -q`, return its tail-line result.
 run_phase() {
   local test_file="$1"
