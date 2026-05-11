@@ -70,8 +70,54 @@ M.processInfo = { version = "1.1.1-stub" }
 
 -- Below are namespaces whose existence we have to fake but whose
 -- functions L1 tests never call. Method calls would just return nil.
-M.screen = noopNamespace()
-M.spaces = noopNamespace()
+-- hs.screen — opt-in stub. By default `find(uuid)` returns nil
+-- (preserves the original noop-stub behavior that existing
+-- getDisplayLabel tests rely on for the "unknown screen → uuid:8
+-- fallback" branch). Tests that NEED hs.screen.find to return a
+-- usable screen object — like findChange / getSpaceIndex which
+-- pass the screen down to hs.spaces.spacesForScreen — call
+-- `hs.screen._test_seed_screen(uuid)` first, which registers the
+-- uuid so subsequent find() calls return a fake screen object.
+do
+  local registered = {}
+
+  M.screen = setmetatable({
+    find = function(uuid)
+      if not uuid or not registered[uuid] then return nil end
+      return {
+        _uuid  = uuid,
+        getUUID = function(self) return self._uuid end,
+        name   = function(self) return "fake-screen-" .. tostring(self._uuid) end,
+        frame  = function(self) return { x = 0, y = 0, w = 1920, h = 1080 } end,
+      }
+    end,
+    allScreens = function() return {} end,
+    _test_seed_screen = function(uuid) registered[uuid] = true end,
+    _test_reset       = function() registered = {} end,
+  }, {
+    __index = function() return function() end end,
+  })
+end
+
+-- hs.spaces — partial real stub. `getSpaceIndex` (called from
+-- findChange) walks hs.spaces.spacesForScreen looking for a sid.
+-- Tests seed _per_screen_spaces[uuid] = {sid1, sid2, ...} then
+-- spacesForScreen does an in-memory lookup. Everything else
+-- (gotoSpace, activeSpaces, ...) stays a no-op.
+M.spaces = setmetatable({
+  _per_screen_spaces = {},  -- uuid → list of sids
+  spacesForScreen = function(scr)
+    -- scr is a stub screen object with a getUUID() method, OR a uuid
+    -- string directly (the source code calls spacesForScreen(scr)).
+    local uuid = type(scr) == "string" and scr or
+                 (scr and scr.getUUID and scr:getUUID())
+    return M.spaces._per_screen_spaces[uuid]
+  end,
+  _test_reset = function() M.spaces._per_screen_spaces = {} end,
+  _test_seed = function(uuid, sids) M.spaces._per_screen_spaces[uuid] = sids end,
+}, {
+  __index = function() return function() end end,  -- everything else: noop
+})
 M.application = noopNamespace()
 M.timer = noopNamespace()
 M.canvas = noopNamespace()

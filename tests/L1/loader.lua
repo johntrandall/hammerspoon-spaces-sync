@@ -134,6 +134,9 @@ do
     -- nameForIndex transitively touches hs.settings via ensureNamesLoaded;
     -- hs_stub.lua provides a real in-memory hs.settings to support this.
     "nameForIndex",
+    -- findChange + getSpaceIndex use hs.spaces.spacesForScreen; the
+    -- L1 stub provides a seedable in-memory map (per_screen_spaces).
+    "findChange", "getSpaceIndex",
   }) do
     M.helpers[name] = (require_upvalue(M.obj.start, name))
   end
