@@ -45,7 +45,7 @@ obj.logger = hs.logger.new('SpacesSync', 'info')
 -- VERSION REQUIREMENTS
 -- ============================================================================
 
-local TESTED_OS = { major = 15, minor = 5, patch = 0 }
+local TESTED_OS = { major = 15, minor = 7, patch = 5 }
 local MIN_OS_MAJOR = 15
 local TESTED_HS = "1.1.1"
 
